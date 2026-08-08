@@ -1,0 +1,33 @@
+PASS وجود QatFarm.Mobile.sln
+PASS وجود QatFarm.Mobile/QatFarm.Mobile.csproj
+PASS وجود QatFarm.Mobile/Components/Login.razor
+PASS وجود QatFarm.Mobile/Components/Layout/MainLayout.razor
+PASS وجود QatFarm.Mobile/Components/Pages/Home.razor
+PASS وجود QatFarm.Mobile/wwwroot/css/app.css
+PASS XML QatFarm.Mobile.csproj
+PASS XML App.xaml
+PASS XML MainPage.xaml
+PASS الإصدار 1.0.3
+PASS ApplicationVersion 4
+PASS معرّف التطبيق ثابت
+PASS أيقونة PNG حقيقية
+PASS Splash PNG
+PASS صورة farm_login.jpg
+PASS صورة farm_rows.jpg
+PASS صورة farm_close.jpg
+PASS صورة qat_bundle.jpg
+PASS صورة app_icon.png
+PASS توازن CSS
+PASS CSS يستخدم farm_login.jpg
+PASS CSS يستخدم farm_rows.jpg
+PASS CSS يستخدم farm_close.jpg
+PASS CSS يستخدم qat_bundle.jpg
+PASS شعار الدخول
+PASS لوحة تصميم 2
+PASS شريط تنقل حديث
+PASS صور المزارع
+PASS لا يوجد Unique Indexed متعارض
+PASS لا تعيين مباشر Paint.Typeface
+PASS بدون CDN
+
+TOTAL=31 PASS=31 FAIL=0
