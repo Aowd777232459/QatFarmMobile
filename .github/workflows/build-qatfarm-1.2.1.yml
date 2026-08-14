@@ -1,0 +1,125 @@
+name: QatFarm 1.2.1 Android + Google Play
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: windows-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract QatFarm 1.2.1 source
+        shell: pwsh
+        run: |
+          $zip = "QatFarmMobile_Source_1.2.1_FIXED.zip"
+          if (-not (Test-Path $zip)) {
+            throw "$zip was not found in the repository root. Upload the exact 1.2.1 FIXED source file."
+          }
+          if (Test-Path "source") { Remove-Item "source" -Recurse -Force }
+          Expand-Archive -Path $zip -DestinationPath "source" -Force
+
+      - name: Verify Razor project and locate signing key
+        id: locate
+        shell: pwsh
+        run: |
+          $project = Get-ChildItem -Path "source" -Recurse -Filter "QatFarm.Mobile.csproj" | Select-Object -First 1
+          if (-not $project) { throw "QatFarm.Mobile.csproj was not found." }
+
+          $firstLine = (Get-Content $project.FullName -TotalCount 1).Trim()
+          Write-Host "Project first line: $firstLine"
+          if ($firstLine -notmatch 'Microsoft\.NET\.Sdk\.Razor') {
+            throw "Wrong/old source ZIP detected. QatFarm.Mobile.csproj must use Microsoft.NET.Sdk.Razor."
+          }
+
+          $keystore = Get-ChildItem -Path "source" -Recurse -Filter "QatFarmMobile.keystore" | Select-Object -First 1
+          if (-not $keystore) { throw "QatFarmMobile.keystore was not found." }
+
+          "project=$($project.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "projectDir=$($project.Directory.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "keystore=$($keystore.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Install .NET MAUI Android workload
+        shell: pwsh
+        run: |
+          dotnet workload install maui-android
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Ensure Android API 36 SDK
+        shell: pwsh
+        run: |
+          $sdkmanager = Join-Path $env:ANDROID_HOME "cmdline-tools\latest\bin\sdkmanager.bat"
+          if (-not (Test-Path $sdkmanager)) {
+            $candidate = Get-ChildItem -Path (Join-Path $env:ANDROID_HOME "cmdline-tools") -Recurse -Filter "sdkmanager.bat" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidate) { $sdkmanager = $candidate.FullName }
+          }
+          if (-not (Test-Path $sdkmanager)) { throw "Android sdkmanager.bat was not found." }
+          & $sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore project
+        shell: pwsh
+        run: |
+          dotnet workload restore "${{ steps.locate.outputs.project }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore "${{ steps.locate.outputs.project }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build signed AAB and universal APK
+        shell: pwsh
+        run: |
+          dotnet publish "${{ steps.locate.outputs.project }}" `
+            -f net10.0-android36.0 `
+            -c Release `
+            -p:AndroidPackageFormats="aab;apk" `
+            -p:AndroidCreatePackagePerAbi=false `
+            -p:AndroidKeyStore=true `
+            -p:AndroidSigningKeyStore="${{ steps.locate.outputs.keystore }}" `
+            -p:AndroidSigningKeyAlias=qatfarm `
+            -p:AndroidSigningKeyPass=QatFarmMobile2026Key `
+            -p:AndroidSigningStorePass=QatFarmMobile2026Key
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Collect release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "release" -Force | Out-Null
+
+          $aab = Get-ChildItem -Path "${{ steps.locate.outputs.projectDir }}" -Recurse -Filter "*.aab" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $aab) { throw "No AAB was produced." }
+          Copy-Item $aab.FullName "release/QatFarmMobile-GooglePlay-1.2.1.aab" -Force
+
+          $apk = Get-ChildItem -Path "${{ steps.locate.outputs.projectDir }}" -Recurse -Filter "*-Signed.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $apk) {
+            $apk = Get-ChildItem -Path "${{ steps.locate.outputs.projectDir }}" -Recurse -Filter "*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          }
+          if (-not $apk) { throw "No APK was produced." }
+          Copy-Item $apk.FullName "release/QatFarmMobile-Universal-1.2.1.apk" -Force
+
+          Get-FileHash "release/QatFarmMobile-GooglePlay-1.2.1.aab" -Algorithm SHA256 | Format-List | Out-File "release/SHA256.txt"
+          Get-FileHash "release/QatFarmMobile-Universal-1.2.1.apk" -Algorithm SHA256 | Format-List | Out-File "release/SHA256.txt" -Append
+
+      - name: Upload QatFarm 1.2.1 release
+        uses: actions/upload-artifact@v4
+        with:
+          name: QatFarmMobile-1.2.1-APK-AAB
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
