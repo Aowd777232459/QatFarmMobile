@@ -1,4 +1,4 @@
-name: QatFarm 1.2.2 Android + Google Play
+name: Build QatFarm 1.2.2 Android + Google Play
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Extract QatFarm 1.2.1 fixed source
+      - name: Extract QatFarm 1.2.1 source
         shell: pwsh
         run: |
           $zip = "QatFarmMobile_Source_1.2.1_FIXED.zip"
@@ -43,10 +43,9 @@ jobs:
           $project = Get-ChildItem -Path "source" -Recurse -Filter "QatFarm.Mobile.csproj" | Select-Object -First 1
           if (-not $project) { throw "QatFarm.Mobile.csproj was not found." }
 
-          $firstLine = (Get-Content $project.FullName -TotalCount 1).Trim()
-          Write-Host "Project first line: $firstLine"
-          if ($firstLine -notmatch 'Microsoft\.NET\.Sdk\.Razor') {
-            throw "Wrong/old source ZIP detected. QatFarm.Mobile.csproj must use Microsoft.NET.Sdk.Razor."
+          $xmlText = Get-Content $project.FullName -Raw
+          if ($xmlText -notmatch 'Microsoft\.NET\.Sdk\.Razor') {
+            throw "Wrong source package: QatFarm.Mobile.csproj must use Microsoft.NET.Sdk.Razor."
           }
 
           $keystore = Get-ChildItem -Path "source" -Recurse -Filter "QatFarmMobile.keystore" | Select-Object -First 1
@@ -97,6 +96,14 @@ jobs:
             -p:AndroidSigningStorePass=QatFarmMobile2026Key
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Collect AAB
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "release" -Force | Out-Null
+          $aab = Get-ChildItem -Path "${{ steps.locate.outputs.projectDir }}" -Recurse -Filter "*.aab" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $aab) { throw "No AAB was produced." }
+          Copy-Item $aab.FullName "release/QatFarmMobile-GooglePlay-1.2.2.aab" -Force
+
       - name: Build signed universal APK
         shell: pwsh
         run: |
@@ -105,7 +112,6 @@ jobs:
             -c Release `
             --no-restore `
             -p:AndroidPackageFormats=apk `
-            -p:AndroidCreatePackagePerAbi=false `
             -p:AndroidKeyStore=true `
             -p:AndroidSigningKeyStore="${{ steps.locate.outputs.keystore }}" `
             -p:AndroidSigningKeyAlias=qatfarm `
@@ -113,15 +119,9 @@ jobs:
             -p:AndroidSigningStorePass=QatFarmMobile2026Key
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Collect release files
+      - name: Collect APK and hashes
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "release" -Force | Out-Null
-
-          $aab = Get-ChildItem -Path "${{ steps.locate.outputs.projectDir }}" -Recurse -Filter "*.aab" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $aab) { throw "No AAB was produced." }
-          Copy-Item $aab.FullName "release/QatFarmMobile-GooglePlay-1.2.2.aab" -Force
-
           $apk = Get-ChildItem -Path "${{ steps.locate.outputs.projectDir }}" -Recurse -Filter "*-Signed.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $apk) {
             $apk = Get-ChildItem -Path "${{ steps.locate.outputs.projectDir }}" -Recurse -Filter "*.apk" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -135,7 +135,7 @@ jobs:
       - name: Upload QatFarm 1.2.2 release
         uses: actions/upload-artifact@v4
         with:
-          name: QatFarmMobile-1.2.2-APK-AAB
+          name: QatFarmMobile-1.2.2-Release
           path: release/*
           if-no-files-found: error
           retention-days: 30
