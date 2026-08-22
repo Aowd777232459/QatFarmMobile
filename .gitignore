@@ -1,0 +1,6 @@
+source-work/
+release/
+**/bin/
+**/obj/
+*.apk
+*.aab
