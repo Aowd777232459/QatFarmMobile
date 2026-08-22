@@ -99,7 +99,10 @@ jobs:
 
       - name: Create hashes
         shell: pwsh
-        run: Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | Format-Table Path,Hash | Out-File release/SHA256.txt
+        run: |
+          $apk = Get-Item release/QatFarmMobile-VIP-2.0.0-Install.apk
+          $hash = Get-FileHash $apk.FullName -Algorithm SHA256
+          "$($hash.Hash)  $($apk.Name)" | Set-Content release/SHA256.txt -Encoding utf8
 
       - name: Upload VIP release
         uses: actions/upload-artifact@v4
