@@ -153,8 +153,14 @@ jobs:
 
       - name: Create Android 16 emulator
         run: |
-          yes | sdkmanager "platform-tools" "emulator" "system-images;android-36;google_apis;x86_64"
-          echo no | avdmanager create avd --force --name qatfarm-api36 --package "system-images;android-36;google_apis;x86_64"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"; fi
+          if [ ! -x "$AVDMANAGER" ]; then AVDMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name avdmanager | head -n 1)"; fi
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
+          yes | "$SDKMANAGER" "platform-tools" "emulator" "system-images;android-36;google_apis;x86_64"
+          echo no | "$AVDMANAGER" create avd --force --name qatfarm-api36 --package "system-images;android-36;google_apis;x86_64"
 
       - name: Boot emulator
         run: |
