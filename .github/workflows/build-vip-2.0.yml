@@ -8,9 +8,11 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-android:
+    if: "${{ !startsWith(github.event.head_commit.message, 'test: smoke-only') }}"
     runs-on: windows-latest
     timeout-minutes: 90
 
@@ -135,15 +137,30 @@ jobs:
 
   smoke-test-android:
     needs: build-android
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
     steps:
       - name: Download installable APK
+        if: ${{ needs.build-android.result == 'success' }}
         uses: actions/download-artifact@v4
         with:
           name: QatFarmMobile-2.0.0-VIP-Install-APK
           path: apk
+
+      - name: Reuse latest Release APK
+        if: ${{ needs.build-android.result == 'skipped' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p apk
+          curl -L --fail-with-body \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9467717177/zip" \
+            -o release-artifact.zip
+          unzip release-artifact.zip -d apk
 
       - name: Enable KVM
         run: |
@@ -161,6 +178,7 @@ jobs:
           test -x "$AVDMANAGER"
           yes | "$SDKMANAGER" "platform-tools" "emulator" "system-images;android-36;google_apis;x86_64"
           echo no | "$AVDMANAGER" create avd --force --name qatfarm-api36 --package "system-images;android-36;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
       - name: Boot emulator
         run: |
