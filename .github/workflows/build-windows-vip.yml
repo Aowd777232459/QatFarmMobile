@@ -34,7 +34,22 @@ jobs:
           Expand-Archive -Path $archive -DestinationPath windows-source -Force
           $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
           if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
-          "WINDOWS_ROOT=$($builder.Directory.Parent.FullName)" | Out-File $env:GITHUB_ENV -Append
+          $windowsRoot = $builder.Directory.Parent.FullName
+          $patchRoot = Join-Path (Get-Location) '.github\windows-vip-2.2.2'
+          $patchFiles = @(
+            'QatFarm.Web\Data\DatabaseSchemaUpdater.cs',
+            'QatFarm.Web\database\Upgrade_Accounting_2_1.sql',
+            'Testing\Product-Readiness-QA.ps1',
+            'QatFarm.Web\QatFarm.Web.csproj',
+            'Installer\QatFarmSystem.iss'
+          )
+          foreach ($relative in $patchFiles) {
+            $source = Join-Path $patchRoot $relative
+            $target = Join-Path $windowsRoot $relative
+            if (-not (Test-Path $source)) { throw "Missing Windows patch file: $relative" }
+            Copy-Item $source $target -Force
+          }
+          "WINDOWS_ROOT=$windowsRoot" | Out-File $env:GITHUB_ENV -Append
           "WINDOWS_BUILDER=$($builder.FullName)" | Out-File $env:GITHUB_ENV -Append
 
       - name: Install Inno Setup
@@ -69,15 +84,15 @@ jobs:
         run: |
           New-Item release -ItemType Directory -Force | Out-Null
           $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*.exe' | Select-Object -First 1
-          Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.0-Setup.exe' -Force
+          Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe' -Force
           Copy-Item "$env:WINDOWS_ROOT\Release\RELEASE_INFO.txt" 'release/RELEASE_INFO.txt' -Force
-          $hash = Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.0-Setup.exe' -Algorithm SHA256
-          "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-VIP-2.2.0-Setup.exe" | Set-Content release/SHA256.txt -Encoding utf8
+          $hash = Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe' -Algorithm SHA256
+          "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe" | Set-Content release/SHA256.txt -Encoding utf8
 
       - name: Upload ready Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: AWAD-SOFT-QatFarm-Windows-VIP-2.2.0-Setup
+          name: AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup
           path: release/*
           if-no-files-found: error
           retention-days: 30
