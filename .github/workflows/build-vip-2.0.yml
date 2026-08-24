@@ -192,10 +192,7 @@ jobs:
             adb exec-out screencap -p > app-startup.png
             test -s app-pid.txt
             grep -q 'QATFARM_STARTUP_OK' logcat.txt
-            if grep -q 'QATFARM_STARTUP_ERROR' logcat.txt; then
-              echo 'The application reported a database startup error.'
-              exit 1
-            fi
+            ! grep -q 'QATFARM_STARTUP_ERROR' logcat.txt
 
       - name: Upload startup diagnostics
         if: always()
