@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/vip-accounting-2.0
+    paths-ignore:
+      - '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
+      - '.github/workflows/build-windows-vip.yml'
   workflow_dispatch:
 
 permissions:
