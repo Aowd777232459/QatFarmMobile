@@ -59,13 +59,13 @@ jobs:
           & $finalPatch -WindowsRoot $windowsRoot
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          "WINDOWS_ROOT=$windowsRoot" | Out-File $env:GITHUB_ENV -Append
-          "WINDOWS_BUILDER=$($builder.FullName)" | Out-File $env:GITHUB_ENV -Append
-
       - name: Regression gate for legacy database repair
         shell: pwsh
         run: |
-          $updaterPath = Join-Path $env:WINDOWS_ROOT 'QatFarm.Web\Data\DatabaseSchemaUpdater.cs'
+          $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
+          if (-not $builder) { throw 'Build-Installer.ps1 was not found after extraction.' }
+          $windowsRoot = $builder.Directory.Parent.FullName
+          $updaterPath = Join-Path $windowsRoot 'QatFarm.Web\Data\DatabaseSchemaUpdater.cs'
           $updater = Get-Content $updaterPath -Raw -Encoding UTF8
           $required = @(
             "COL_LENGTH(N'dbo.JournalEntries', N'Status')",
@@ -84,10 +84,10 @@ jobs:
             throw "IsAutomatic repair must run before IX_JournalEntries_Source. Repair=$repairIndex Index=$sourceIndex"
           }
 
-          $project = Get-Content (Join-Path $env:WINDOWS_ROOT 'QatFarm.Web\QatFarm.Web.csproj') -Raw -Encoding UTF8
+          $project = Get-Content (Join-Path $windowsRoot 'QatFarm.Web\QatFarm.Web.csproj') -Raw -Encoding UTF8
           if (-not $project.Contains('<Version>2.2.3</Version>')) { throw 'Product version is not 2.2.3.' }
 
-          $iss = Get-Content (Join-Path $env:WINDOWS_ROOT 'Installer\QatFarmSystem.iss') -Raw -Encoding UTF8
+          $iss = Get-Content (Join-Path $windowsRoot 'Installer\QatFarmSystem.iss') -Raw -Encoding UTF8
           foreach ($token in @('QatFarmSystem_Setup_2.2.3_x64','pre-2.2.3.bak','remoteip=localsubnet','RunOnceId: "RemoveQatFarmSyncFirewall"')) {
             if (-not $iss.Contains($token)) { throw "Installer final hardening missing: $token" }
           }
@@ -99,13 +99,18 @@ jobs:
       - name: Build and verify installer
         shell: pwsh
         run: |
-          & $env:WINDOWS_BUILDER -SkipToolInstall -NoExplorer
+          $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
+          if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
+          & $builder.FullName -SkipToolInstall -NoExplorer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Smoke install and verify local web host
         shell: pwsh
         run: |
-          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*2.2.3*.exe' | Select-Object -First 1
+          $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
+          if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
+          $windowsRoot = $builder.Directory.Parent.FullName
+          $setup = Get-ChildItem "$windowsRoot\Release\installer" -Filter '*2.2.3*.exe' | Select-Object -First 1
           if (-not $setup) { throw 'Windows 2.2.3 Setup.exe was not produced.' }
           $installDir = Join-Path $env:RUNNER_TEMP 'AWAD-SOFT-QatFarm-2.2.3'
           $process = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOSQL',"/DIR=$installDir" -PassThru -Wait
@@ -137,11 +142,14 @@ jobs:
       - name: Collect release package
         shell: pwsh
         run: |
+          $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
+          if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
+          $windowsRoot = $builder.Directory.Parent.FullName
           New-Item release -ItemType Directory -Force | Out-Null
-          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*2.2.3*.exe' | Select-Object -First 1
+          $setup = Get-ChildItem "$windowsRoot\Release\installer" -Filter '*2.2.3*.exe' | Select-Object -First 1
           if (-not $setup) { throw 'Final 2.2.3 installer not found.' }
           Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-FINAL-2.2.3-Setup.exe' -Force
-          Copy-Item "$env:WINDOWS_ROOT\Release\RELEASE_INFO.txt" 'release/RELEASE_INFO.txt' -Force
+          Copy-Item "$windowsRoot\Release\RELEASE_INFO.txt" 'release/RELEASE_INFO.txt' -Force
           $hash = Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-FINAL-2.2.3-Setup.exe' -Algorithm SHA256
           "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-FINAL-2.2.3-Setup.exe" | Set-Content release/SHA256.txt -Encoding utf8
 
