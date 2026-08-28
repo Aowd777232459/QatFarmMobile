@@ -1,12 +1,15 @@
-name: AWAD SOFT Windows VIP Installer
+name: AWAD SOFT Windows FINAL 2.2.3
 
 on:
   workflow_dispatch:
   push:
     branches:
       - feature/vip-accounting-2.0
+      - fix/windows-2.2.3-final
     paths:
       - '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
+      - '.github/windows-vip-2.2.2/**'
+      - '.github/windows-vip-2.2.3/**'
       - '.github/workflows/build-windows-vip.yml'
 
 permissions:
@@ -26,7 +29,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Extract Windows VIP source
+      - name: Extract source and apply 2.2.3 final patch
         shell: pwsh
         run: |
           $archive = '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
@@ -35,6 +38,7 @@ jobs:
           $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
           if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
           $windowsRoot = $builder.Directory.Parent.FullName
+
           $patchRoot = Join-Path (Get-Location) '.github\windows-vip-2.2.2'
           $patchFiles = @(
             'QatFarm.Web\Data\DatabaseSchemaUpdater.cs',
@@ -49,8 +53,44 @@ jobs:
             if (-not (Test-Path $source)) { throw "Missing Windows patch file: $relative" }
             Copy-Item $source $target -Force
           }
+
+          $finalPatch = Join-Path (Get-Location) '.github\windows-vip-2.2.3\Apply-FinalPatch.ps1'
+          if (-not (Test-Path $finalPatch)) { throw 'Missing 2.2.3 final patch script.' }
+          & $finalPatch -WindowsRoot $windowsRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
           "WINDOWS_ROOT=$windowsRoot" | Out-File $env:GITHUB_ENV -Append
           "WINDOWS_BUILDER=$($builder.FullName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Regression gate for legacy database repair
+        shell: pwsh
+        run: |
+          $updaterPath = Join-Path $env:WINDOWS_ROOT 'QatFarm.Web\Data\DatabaseSchemaUpdater.cs'
+          $updater = Get-Content $updaterPath -Raw -Encoding UTF8
+          $required = @(
+            "COL_LENGTH(N'dbo.JournalEntries', N'Status')",
+            "COL_LENGTH(N'dbo.JournalEntries', N'IsAutomatic')",
+            "COL_LENGTH(N'dbo.JournalEntries', N'SourceHash')",
+            "COL_LENGTH(N'dbo.JournalEntries', N'RowVersion')",
+            'DuplicateKeys AS',
+            "Version = N'2.2.3'"
+          )
+          foreach ($token in $required) {
+            if (-not $updater.Contains($token)) { throw "Missing final migration token: $token" }
+          }
+          $repairIndex = $updater.IndexOf("COL_LENGTH(N'dbo.JournalEntries', N'IsAutomatic')")
+          $sourceIndex = $updater.IndexOf('CREATE INDEX IX_JournalEntries_Source')
+          if ($repairIndex -lt 0 -or $sourceIndex -le $repairIndex) {
+            throw "IsAutomatic repair must run before IX_JournalEntries_Source. Repair=$repairIndex Index=$sourceIndex"
+          }
+
+          $project = Get-Content (Join-Path $env:WINDOWS_ROOT 'QatFarm.Web\QatFarm.Web.csproj') -Raw -Encoding UTF8
+          if (-not $project.Contains('<Version>2.2.3</Version>')) { throw 'Product version is not 2.2.3.' }
+
+          $iss = Get-Content (Join-Path $env:WINDOWS_ROOT 'Installer\QatFarmSystem.iss') -Raw -Encoding UTF8
+          foreach ($token in @('QatFarmSystem_Setup_2.2.3_x64','pre-2.2.3.bak','remoteip=localsubnet','RunOnceId: "RemoveQatFarmSyncFirewall"')) {
+            if (-not $iss.Contains($token)) { throw "Installer final hardening missing: $token" }
+          }
 
       - name: Install Inno Setup
         shell: pwsh
@@ -62,12 +102,12 @@ jobs:
           & $env:WINDOWS_BUILDER -SkipToolInstall -NoExplorer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Smoke install without SQL download
+      - name: Smoke install and verify local web host
         shell: pwsh
         run: |
-          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*.exe' | Select-Object -First 1
-          if (-not $setup) { throw 'Windows Setup.exe was not produced.' }
-          $installDir = Join-Path $env:RUNNER_TEMP 'AWAD-SOFT-QatFarm'
+          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*2.2.3*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'Windows 2.2.3 Setup.exe was not produced.' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'AWAD-SOFT-QatFarm-2.2.3'
           $process = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOSQL',"/DIR=$installDir" -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)." }
           $app = Join-Path $installDir 'QatFarm.Web.exe'
@@ -75,24 +115,40 @@ jobs:
 
           $env:DesktopMode__AutoOpenBrowser = 'false'
           $running = Start-Process $app -WorkingDirectory $installDir -PassThru
-          Start-Sleep -Seconds 12
-          if ($running.HasExited) { throw "Installed app exited early with $($running.ExitCode)." }
-          Stop-Process -Id $running.Id -Force
+          try {
+            $responded = $false
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Seconds 1
+              if ($running.HasExited) { throw "Installed app exited early with $($running.ExitCode)." }
+              try {
+                $response = Invoke-WebRequest -Uri 'http://127.0.0.1:5275/' -UseBasicParsing -TimeoutSec 2 -SkipHttpErrorCheck
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 600) {
+                  $responded = $true
+                  break
+                }
+              } catch { }
+            }
+            if (-not $responded) { throw 'Installed app did not expose the local web interface on port 5275.' }
+          }
+          finally {
+            if (-not $running.HasExited) { Stop-Process -Id $running.Id -Force }
+          }
 
       - name: Collect release package
         shell: pwsh
         run: |
           New-Item release -ItemType Directory -Force | Out-Null
-          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*.exe' | Select-Object -First 1
-          Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe' -Force
+          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*2.2.3*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'Final 2.2.3 installer not found.' }
+          Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-FINAL-2.2.3-Setup.exe' -Force
           Copy-Item "$env:WINDOWS_ROOT\Release\RELEASE_INFO.txt" 'release/RELEASE_INFO.txt' -Force
-          $hash = Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe' -Algorithm SHA256
-          "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe" | Set-Content release/SHA256.txt -Encoding utf8
+          $hash = Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-FINAL-2.2.3-Setup.exe' -Algorithm SHA256
+          "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-FINAL-2.2.3-Setup.exe" | Set-Content release/SHA256.txt -Encoding utf8
 
       - name: Upload ready Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup
+          name: AWAD-SOFT-QatFarm-Windows-FINAL-2.2.3-Setup
           path: release/*
           if-no-files-found: error
           retention-days: 30
