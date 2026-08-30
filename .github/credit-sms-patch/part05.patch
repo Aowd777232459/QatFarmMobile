@@ -1,0 +1,32 @@
++            currentBalance = await CalculateCustomerBalanceAsync(db, creditCustomer);
++            var balanceWithoutEditedInvoice = await CalculateCustomerBalanceAsync(
++                db, creditCustomer, model.Id > 0 && invoice.CustomerId == creditCustomer.Id ? model.Id : null);
++            projectedBalance = Math.Round(balanceWithoutEditedInvoice + model.AmountDue, 2);
++            var increasesDebt = projectedBalance > currentBalance + 0.009m;
++
++            if (projectedBalance > creditCustomer.CreditLimit && increasesDebt)
++            {
++                var sms = await SendCreditAlertIfNeededAsync(db, creditCustomer, projectedBalance, blocked: true);
++                throw new InvalidOperationException(
++                    $"تم رفض البيع الآجل: سيصبح دين العميل {projectedBalance:N2} ر.ي بينما الحد المسموح {creditCustomer.CreditLimit:N2} ر.ي. {sms.Message}");
++            }
++
++            sendLimitReachedAlertAfterSave = projectedBalance >= creditCustomer.CreditLimit &&
++                                             creditCustomer.CreditLimit >= 0 &&
++                                             projectedBalance > 0;
++        }
++
+         var old = model.Id == 0 ? null : JsonSerializer.Serialize(invoice);
+         var previousZakatAmount = invoice.ZakatAmount;
+         invoice.FarmId = model.FarmId;
+@@ -600,6 +713,10 @@ public sealed class QatFarmService
+ 
+         await AuditAsync(model.Id == 0 ? "إنشاء فاتورة" : "تعديل فاتورة",
+             nameof(SalesInvoice), invoice.Id, old, invoice);
++
++        if (creditCustomer is not null && sendLimitReachedAlertAfterSave)
++            await SendCreditAlertIfNeededAsync(db, creditCustomer, projectedBalance, blocked: false);
++
+         return invoice.Id;
+     }
+ 
