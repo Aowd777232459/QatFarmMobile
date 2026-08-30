@@ -1,0 +1,39 @@
+name: Export VIP 2.0 merged source
+
+on:
+  push:
+    branches:
+      - feature/vip-accounting-2.0
+    paths:
+      - '.github/workflows/export-vip-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Merge base and VIP patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf merged-source
+          mkdir -p merged-source
+          unzip -q QatFarmMobile_Source_1.2.1_FIXED.zip -d merged-source
+          unzip -q -o QatFarmMobile_VIP_Patch_2.0.0.zip -d merged-source
+          test -f merged-source/QatFarmMobile_Android/QatFarm.Mobile/Services/QatFarmService.cs
+          test -f merged-source/QatFarmMobile_Android/QatFarm.Mobile/Models/DomainModels.cs
+
+      - name: Upload merged source
+        uses: actions/upload-artifact@v4
+        with:
+          name: QatFarmMobile-VIP-2.0.0-Merged-Source
+          path: merged-source/**
+          if-no-files-found: error
+          retention-days: 2
