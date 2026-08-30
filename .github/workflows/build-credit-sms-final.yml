@@ -47,8 +47,8 @@ jobs:
           [IO.File]::WriteAllText($patch, $text, [Text.UTF8Encoding]::new($false))
           Push-Location source
           git init
-          git add .
-          git -c user.email=build@awadsoft.local -c user.name='AWAD SOFT Build' commit -m baseline
+          git config core.autocrlf false
+          git config core.safecrlf false
           git apply --check $patch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git apply $patch
