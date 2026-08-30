@@ -72,25 +72,25 @@ jobs:
         run: |
           $root = Split-Path $env:PROJECT -Parent
           $projectText = Get-Content $env:PROJECT -Raw
-          if ($projectText -notmatch '<ApplicationDisplayVersion>2\.0\.1</ApplicationDisplayVersion>') { throw "Wrong app version." }
-          if ($projectText -notmatch '<ApplicationVersion>21</ApplicationVersion>') { throw "Wrong version code." }
-          if ($projectText -notmatch '<AndroidPackageFormats>apk</AndroidPackageFormats>') { throw "APK-only configuration missing." }
+          if (-not $projectText.Contains('<ApplicationDisplayVersion>2.0.1</ApplicationDisplayVersion>')) { throw "Wrong app version." }
+          if (-not $projectText.Contains('<ApplicationVersion>21</ApplicationVersion>')) { throw "Wrong version code." }
+          if (-not $projectText.Contains('<AndroidPackageFormats>apk</AndroidPackageFormats>')) { throw "APK-only configuration missing." }
 
           $manifest = Get-Content (Join-Path $root 'Platforms/Android/AndroidManifest.xml') -Raw
-          if ($manifest -notmatch 'android.permission.SEND_SMS') { throw "SEND_SMS permission missing." }
+          if (-not $manifest.Contains('android.permission.SEND_SMS')) { throw "SEND_SMS permission missing." }
 
           $domain = Get-Content (Join-Path $root 'Models/DomainModels.cs') -Raw
           $service = Get-Content (Join-Path $root 'Services/QatFarmService.cs') -Raw
           $sms = Get-Content (Join-Path $root 'Services/DebtSmsService.cs') -Raw
           $customers = Get-Content (Join-Path $root 'Components/Pages/Customers.razor') -Raw
           foreach ($needle in @('SellerPhone','CreditLimit','DebtAlertEnabled','LastDebtAlertBalance')) {
-            if ($domain -notmatch $needle) { throw "Missing customer field: $needle" }
+            if (-not $domain.Contains($needle)) { throw "Missing customer field: $needle" }
           }
           foreach ($needle in @('CalculateCustomerBalanceAsync','تم رفض البيع الآجل','SendCreditAlertIfNeededAsync')) {
-            if ($service -notmatch $needle) { throw "Missing credit rule: $needle" }
+            if (-not $service.Contains($needle)) { throw "Missing credit rule: $needle" }
           }
-          if ($sms -notmatch 'SendSmsPermission' -or $sms -notmatch 'SendTextMessage') { throw "Direct SMS implementation missing." }
-          if ($customers -notmatch 'رقم البائع المرتبط' -or $customers -notmatch '100,000') { throw "Customer credit UI missing." }
+          if (-not $sms.Contains('SendSmsPermission') -or -not $sms.Contains('SendTextMessage')) { throw "Direct SMS implementation missing." }
+          if (-not $customers.Contains('رقم البائع المرتبط') -or -not $customers.Contains('100,000')) { throw "Customer credit UI missing." }
 
       - name: Install .NET MAUI Android workload
         shell: pwsh
