@@ -1,0 +1,113 @@
++        return Math.Max(0, customer.OpeningBalance + invoices.Sum(x => x.AmountDue) - openingPayments.Sum(x => x.Amount));
++    }
++
++    public async Task<CustomerBalanceRow?> GetCustomerBalanceAsync(long customerId)
++    {
++        var rows = await GetCustomersAsync();
++        return rows.FirstOrDefault(x => x.Customer.Id == customerId);
++    }
++
++    private static bool SameAlert(Customer customer, decimal balance, decimal limit)
++    {
++        if (!customer.LastDebtAlertAt.HasValue) return false;
++        if (DateTime.Now - customer.LastDebtAlertAt.Value > TimeSpan.FromHours(12)) return false;
++        return Math.Abs(customer.LastDebtAlertBalance - balance) < 0.01m &&
++               Math.Abs(customer.LastDebtAlertLimit - limit) < 0.01m;
++    }
++
++    private async Task ResetCreditAlertIfBelowLimitAsync(SQLiteAsyncConnection db, Customer customer)
++    {
++        if (!customer.LastDebtAlertAt.HasValue) return;
++        var balance = await CalculateCustomerBalanceAsync(db, customer);
++        if (balance >= customer.CreditLimit) return;
++        customer.LastDebtAlertAt = null;
++        customer.LastDebtAlertBalance = 0;
++        customer.LastDebtAlertLimit = 0;
++        customer.UpdatedAt = DateTime.Now;
++        await db.UpdateAsync(customer);
++    }
++
++    private async Task<DebtSmsResult> SendCreditAlertIfNeededAsync(SQLiteAsyncConnection db, Customer customer, decimal balance, bool blocked)
++    {
++        if (!customer.DebtAlertEnabled) return new(false, "تنبيه SMS غير مفعل لهذا العميل.");
++        if (SameAlert(customer, balance, customer.CreditLimit))
++            return new(false, "سبق إرسال نفس التنبيه خلال آخر 12 ساعة.");
++
++        var result = await _debtSms.SendCreditAlertAsync(customer, balance, customer.CreditLimit, blocked);
++        if (result.Sent)
++        {
++            customer.LastDebtAlertAt = DateTime.Now;
++            customer.LastDebtAlertBalance = balance;
++            customer.LastDebtAlertLimit = customer.CreditLimit;
++            customer.UpdatedAt = DateTime.Now;
++            await db.UpdateAsync(customer);
++            await AuditAsync("إرسال تنبيه حد ائتماني", nameof(Customer), customer.Id, null, new
++            {
++                customer.Name, customer.Phone, customer.SellerPhone, Balance = balance, customer.CreditLimit, Blocked = blocked
++            });
++        }
++        return result;
++    }
++
+     public async Task<List<Customer>> GetCustomerLookupsAsync()
+     {
+         var db = await DbAsync();
+@@ -104,10 +176,14 @@ public sealed class QatFarmService
+     public async Task SaveCustomerAsync(Customer model)
+     {
+         if (string.IsNullOrWhiteSpace(model.Name)) throw new InvalidOperationException("اسم العميل مطلوب.");
++        if (model.OpeningBalance < 0) throw new InvalidOperationException("الرصيد الافتتاحي لا يمكن أن يكون سالباً.");
++        if (model.CreditLimit < 0) throw new InvalidOperationException("حد الائتمان لا يمكن أن يكون سالباً.");
+         var db = await DbAsync();
+         if (model.Id == 0)
+         {
+             model.Name = model.Name.Trim();
++            model.Phone = NormalizePhoneForStorage(model.Phone);
++            model.SellerPhone = NormalizePhoneForStorage(model.SellerPhone);
+             await db.InsertAsync(model);
+             await AuditAsync("إضافة", nameof(Customer), model.Id, null, model);
+         }
+@@ -117,6 +193,12 @@ public sealed class QatFarmService
+             var old = await db.FindAsync<Customer>(model.Id) ?? throw new InvalidOperationException("العميل غير موجود.");
+             model.CreatedAt = old.CreatedAt;
+             model.UpdatedAt = DateTime.Now;
++            model.Phone = NormalizePhoneForStorage(model.Phone);
++            model.SellerPhone = NormalizePhoneForStorage(model.SellerPhone);
++            // لا نمسح حالة آخر تنبيه عند تعديل بيانات العميل العادية.
++            model.LastDebtAlertAt = old.LastDebtAlertAt;
++            model.LastDebtAlertBalance = old.LastDebtAlertBalance;
++            model.LastDebtAlertLimit = old.LastDebtAlertLimit;
+             await db.UpdateAsync(model);
+             await AuditAsync("تعديل", nameof(Customer), model.Id, old, model);
+         }
+@@ -156,6 +238,7 @@ public sealed class QatFarmService
+                 throw new InvalidOperationException($"الدفعة أكبر من المتبقي في الفاتورة ({invoice.AmountDue:N2}).");
+ 
+             await ApplyCustomerPaymentAsync(db, customerId, invoice, amount, method, reference);
++            await ResetCreditAlertIfBelowLimitAsync(db, customer);
+             return;
+         }
+ 
+@@ -201,6 +284,7 @@ public sealed class QatFarmService
+             await ApplyCustomerPaymentAsync(db, customerId, invoice, allocation, method, reference);
+             remaining -= allocation;
+         }
++        await ResetCreditAlertIfBelowLimitAsync(db, customer);
+     }
+ 
+     private async Task ApplyCustomerPaymentAsync(SQLiteAsyncConnection db, long customerId, SalesInvoice invoice,
+@@ -539,6 +623,35 @@ public sealed class QatFarmService
+                 throw new InvalidOperationException("لا يمكن تغيير العميل بعد تسجيل دفعات على الفاتورة.");
+         }
+ 
++        Customer? creditCustomer = null;
++        decimal projectedBalance = 0;
++        decimal currentBalance = 0;
++        bool sendLimitReachedAlertAfterSave = false;
++        if (model.CustomerId.HasValue && model.AmountDue > 0)
++        {
++            creditCustomer = await db.FindAsync<Customer>(model.CustomerId.Value)
++                ?? throw new InvalidOperationException("العميل المحدد غير موجود.");
++            if (creditCustomer.IsDeleted || !creditCustomer.IsActive)
++                throw new InvalidOperationException("حساب العميل غير نشط.");
++
