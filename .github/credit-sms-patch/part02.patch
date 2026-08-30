@@ -1,0 +1,87 @@
+- private async Task SavePaymentAsync(){if(paymentCustomer is null)return;try{await Service.AddCustomerPaymentAsync(paymentCustomer.Customer.Id,null,paymentAmount,paymentMethod,paymentReference);ClosePayment();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
++ private async Task SavePaymentAsync(){if(paymentCustomer is null)return;try{await Service.AddCustomerPaymentAsync(paymentCustomer.Customer.Id,null,paymentAmount,paymentMethod,paymentReference);ClosePayment();ok=true;message="تم تسجيل الدفعة وتحديث دين العميل.";await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ }
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/Data/MobileDb.cs b/QatFarmMobile_Android/QatFarm.Mobile/Data/MobileDb.cs
+index 123a7a7..e071695 100644
+--- a/QatFarmMobile_Android/QatFarm.Mobile/Data/MobileDb.cs
++++ b/QatFarmMobile_Android/QatFarm.Mobile/Data/MobileDb.cs
+@@ -69,6 +69,32 @@ public sealed class MobileDb
+             await db.ExecuteAsync(
+                 $"CREATE UNIQUE INDEX IF NOT EXISTS \"UX_{table}_SyncKey\" ON \"{table}\"(SyncKey);");
+         }
++
++        // ترقية بيانات العملاء الخاصة بالحد الائتماني والتنبيه النصي.
++        // يتم ضبط 100,000 ريال كحد افتراضي مرة واحدة فقط للعملاء السابقين
++        // عند إضافة أعمدة التنبيه لأول مرة، ثم يظل للمدير حرية تغييره حتى إلى صفر.
++        var customersExist = await db.ExecuteScalarAsync<int>(
++            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'Customers';");
++        if (customersExist > 0)
++        {
++            var customerColumns = await db.QueryAsync<SqliteColumnInfo>("PRAGMA table_info(\"Customers\");");
++            var firstCreditAlertUpgrade = customerColumns.All(x =>
++                !string.Equals(x.Name, "DebtAlertEnabled", StringComparison.OrdinalIgnoreCase));
++
++            if (customerColumns.All(x => !string.Equals(x.Name, "SellerPhone", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"Customers\" ADD COLUMN SellerPhone TEXT;");
++            if (firstCreditAlertUpgrade)
++                await db.ExecuteAsync("ALTER TABLE \"Customers\" ADD COLUMN DebtAlertEnabled INTEGER NOT NULL DEFAULT 1;");
++            if (customerColumns.All(x => !string.Equals(x.Name, "LastDebtAlertBalance", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"Customers\" ADD COLUMN LastDebtAlertBalance NUMERIC NOT NULL DEFAULT 0;");
++            if (customerColumns.All(x => !string.Equals(x.Name, "LastDebtAlertLimit", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"Customers\" ADD COLUMN LastDebtAlertLimit NUMERIC NOT NULL DEFAULT 0;");
++            if (customerColumns.All(x => !string.Equals(x.Name, "LastDebtAlertAt", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"Customers\" ADD COLUMN LastDebtAlertAt DATETIME NULL;");
++
++            if (firstCreditAlertUpgrade)
++                await db.ExecuteAsync("UPDATE \"Customers\" SET CreditLimit = 100000 WHERE CreditLimit IS NULL OR CreditLimit = 0;");
++        }
+     }
+ 
+     private sealed class SqliteColumnInfo
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/MauiProgram.cs b/QatFarmMobile_Android/QatFarm.Mobile/MauiProgram.cs
+index 768a9c5..5ab95e0 100644
+--- a/QatFarmMobile_Android/QatFarm.Mobile/MauiProgram.cs
++++ b/QatFarmMobile_Android/QatFarm.Mobile/MauiProgram.cs
+@@ -17,6 +17,7 @@ public static class MauiProgram
+ #endif
+         builder.Services.AddSingleton<MobileDb>();
+         builder.Services.AddSingleton<AppSession>();
++        builder.Services.AddSingleton<DebtSmsService>();
+         builder.Services.AddSingleton<QatFarmService>();
+         builder.Services.AddSingleton<MobilePdfService>();
+         builder.Services.AddSingleton<BackupService>();
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/Models/DomainModels.cs b/QatFarmMobile_Android/QatFarm.Mobile/Models/DomainModels.cs
+index 2e069b9..6a102f3 100644
+--- a/QatFarmMobile_Android/QatFarm.Mobile/Models/DomainModels.cs
++++ b/QatFarmMobile_Android/QatFarm.Mobile/Models/DomainModels.cs
+@@ -47,10 +47,15 @@ public sealed class Customer : LocalEntity
+ {
+     [Indexed, NotNull] public string Name { get; set; } = string.Empty;
+     public string? Phone { get; set; }
++    public string? SellerPhone { get; set; }
+     public string? Region { get; set; }
+     public string? Address { get; set; }
+     public decimal OpeningBalance { get; set; }
+-    public decimal CreditLimit { get; set; }
++    public decimal CreditLimit { get; set; } = 100000m;
++    public bool DebtAlertEnabled { get; set; } = true;
++    public decimal LastDebtAlertBalance { get; set; }
++    public decimal LastDebtAlertLimit { get; set; }
++    public DateTime? LastDebtAlertAt { get; set; }
+     public string? Notes { get; set; }
+     public bool IsActive { get; set; } = true;
+ }
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/Platforms/Android/AndroidManifest.xml b/QatFarmMobile_Android/QatFarm.Mobile/Platforms/Android/AndroidManifest.xml
+index b6093e3..62e2dfa 100644
+--- a/QatFarmMobile_Android/QatFarm.Mobile/Platforms/Android/AndroidManifest.xml
++++ b/QatFarmMobile_Android/QatFarm.Mobile/Platforms/Android/AndroidManifest.xml
+@@ -2,6 +2,7 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+   <uses-permission android:name="android.permission.INTERNET" />
+   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
++  <uses-permission android:name="android.permission.SEND_SMS" />
+   <application
+     android:allowBackup="false"
+     android:icon="@mipmap/appicon"
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/QatFarm.Mobile.csproj b/QatFarmMobile_Android/QatFarm.Mobile/QatFarm.Mobile.csproj
+index 1878f96..6901ad9 100644
