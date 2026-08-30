@@ -34,12 +34,10 @@ jobs:
           $patch = Join-Path $env:RUNNER_TEMP 'credit-sms.patch'
           $text = ($parts | ForEach-Object { [IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8) }) -join ''
           [IO.File]::WriteAllText($patch, $text, [Text.UTF8Encoding]::new($false))
-          Push-Location source
-          git apply --check $patch
+          git apply --check --directory=source $patch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git apply $patch
+          git apply --directory=source $patch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Pop-Location
           $project = Get-ChildItem source -Recurse -Filter QatFarm.Mobile.csproj | Select-Object -First 1
           $key = Get-ChildItem source -Recurse -Filter QatFarmMobile.keystore | Select-Object -First 1
           if (-not $project -or -not $key) { throw 'Project or stable signing key missing.' }
