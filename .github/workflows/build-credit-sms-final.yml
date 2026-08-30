@@ -11,77 +11,107 @@ permissions:
   actions: read
 
 jobs:
-  build:
-    runs-on: windows-latest
-    timeout-minutes: 90
+  prepare-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Download exact exported VIP 2.0 source
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          curl.exe -L --fail-with-body `
-            -H "Authorization: Bearer $env:GH_TOKEN" `
-            -H "Accept: application/vnd.github+json" `
-            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9737260061/zip" `
+          set -euo pipefail
+          curl -L --fail-with-body \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9737260061/zip" \
             -o merged-source.zip
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Expand-Archive merged-source.zip source -Force
+          mkdir prepared
+          unzip -q merged-source.zip -d prepared
 
-      - name: Apply credit limit and SMS patch to exact source
+      - name: Apply verified credit limit and SMS patch
+        run: |
+          set -euo pipefail
+          cat .github/credit-sms-patch/part01.patch \
+              .github/credit-sms-patch/part02.patch \
+              .github/credit-sms-patch/part03.patch \
+              .github/credit-sms-patch/part04.patch \
+              .github/credit-sms-patch/part05.patch > /tmp/credit-sms-2.0.1.patch
+          test "$(wc -c < /tmp/credit-sms-2.0.1.patch)" -eq 25557
+          test "$(sha256sum /tmp/credit-sms-2.0.1.patch | awk '{print $1}')" = "0ec512770dfb09bfa5bf1ddc18d60c5ba23df1c5fbecca8201a6f3b60f43c8ed"
+          cd prepared
+          git init -q
+          git config core.autocrlf false
+          git apply --check /tmp/credit-sms-2.0.1.patch
+          git apply /tmp/credit-sms-2.0.1.patch
+          test -f QatFarmMobile_Android/QatFarm.Mobile/Services/DebtSmsService.cs
+          grep -q 'android.permission.SEND_SMS' QatFarmMobile_Android/QatFarm.Mobile/Platforms/Android/AndroidManifest.xml
+          grep -q 'SellerPhone' QatFarmMobile_Android/QatFarm.Mobile/Models/DomainModels.cs
+          grep -q 'SendCreditAlertIfNeededAsync' QatFarmMobile_Android/QatFarm.Mobile/Services/QatFarmService.cs
+          grep -q 'رقم البائع المرتبط' QatFarmMobile_Android/QatFarm.Mobile/Components/Pages/Customers.razor
+
+      - name: Upload prepared 2.0.1 source
+        uses: actions/upload-artifact@v4
+        with:
+          name: QatFarmMobile-VIP-2.0.1-Prepared-Source
+          path: prepared/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-android:
+    needs: prepare-source
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Download prepared source
+        uses: actions/download-artifact@v4
+        with:
+          name: QatFarmMobile-VIP-2.0.1-Prepared-Source
+          path: source
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Locate project and stable signing key
         shell: pwsh
         run: |
-          $parts = Get-ChildItem '.github/credit-sms-patch/part*.patch' | Sort-Object Name
-          if ($parts.Count -ne 5) { throw 'Expected 5 patch parts.' }
-          $patch = Join-Path $env:RUNNER_TEMP 'credit-sms.patch'
-          $text = ($parts | ForEach-Object { [IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8) }) -join ''
-          [IO.File]::WriteAllText($patch, $text, [Text.UTF8Encoding]::new($false))
-          Push-Location source
-          git init
-          git config core.autocrlf false
-          git config core.safecrlf false
-          git apply --check $patch
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git apply $patch
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Pop-Location
-
           $project = Get-ChildItem source -Recurse -Filter QatFarm.Mobile.csproj | Select-Object -First 1
           $key = Get-ChildItem source -Recurse -Filter QatFarmMobile.keystore | Select-Object -First 1
-          if (-not $project -or -not $key) { throw 'Project or stable signing key missing.' }
+          if (-not $project) { throw 'QatFarm.Mobile.csproj was not found.' }
+          if (-not $key) { throw 'Stable signing key was not found.' }
+          $root = $project.Directory.FullName
+          if (-not (Test-Path (Join-Path $root 'Services/DebtSmsService.cs'))) { throw 'DebtSmsService.cs is missing.' }
+          $manifest = Get-Content (Join-Path $root 'Platforms/Android/AndroidManifest.xml') -Raw
+          if (-not $manifest.Contains('android.permission.SEND_SMS')) { throw 'SEND_SMS permission missing.' }
           "PROJECT=$($project.FullName)" | Out-File $env:GITHUB_ENV -Append
           "PROJECT_DIR=$($project.Directory.FullName)" | Out-File $env:GITHUB_ENV -Append
           "KEYSTORE=$($key.FullName)" | Out-File $env:GITHUB_ENV -Append
-          $root = $project.Directory.FullName
-          foreach ($required in @('Services/DebtSmsService.cs','Services/QatFarmService.cs','Components/Pages/Customers.razor','Platforms/Android/AndroidManifest.xml')) {
-            if (-not (Test-Path (Join-Path $root $required))) { throw "Missing $required" }
-          }
-          $manifest = Get-Content (Join-Path $root 'Platforms/Android/AndroidManifest.xml') -Raw
-          if (-not $manifest.Contains('android.permission.SEND_SMS')) { throw 'SEND_SMS permission missing.' }
 
-      - name: Install Android workload
+      - name: Install .NET MAUI Android workload
         shell: pwsh
         run: |
           dotnet workload install maui-android
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Ensure Android API 36
+      - name: Ensure Android API 36 SDK
         shell: pwsh
         run: |
           $sdkmanager = Join-Path $env:ANDROID_HOME 'cmdline-tools\latest\bin\sdkmanager.bat'
           if (-not (Test-Path $sdkmanager)) {
-            $sdkmanager = (Get-ChildItem (Join-Path $env:ANDROID_HOME 'cmdline-tools') -Recurse -Filter sdkmanager.bat -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+            $candidate = Get-ChildItem (Join-Path $env:ANDROID_HOME 'cmdline-tools') -Recurse -Filter sdkmanager.bat -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidate) { $sdkmanager = $candidate.FullName }
           }
-          if (-not $sdkmanager) { throw 'sdkmanager not found.' }
+          if (-not (Test-Path $sdkmanager)) { throw 'sdkmanager.bat was not found.' }
           & $sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -92,7 +122,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet restore $env:PROJECT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build $env:PROJECT -f net10.0-android36.0 -c Release --no-restore
+          dotnet build $env:PROJECT -f net10.0-android36.0 -c Release --no-restore `
+            -p:ApplicationDisplayVersion=2.0.1 `
+            -p:ApplicationVersion=21 `
+            -p:AndroidPackageFormats=apk
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build stable signed APK only
@@ -112,30 +145,35 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $apk = Get-ChildItem $env:PROJECT_DIR -Recurse -Filter '*-Signed.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $apk) { $apk = Get-ChildItem $env:PROJECT_DIR -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
-          if (-not $apk) { throw 'No APK produced.' }
+          if (-not $apk) { throw 'No APK was produced.' }
           Copy-Item $apk.FullName release/QatFarmMobile-VIP-2.0.1-Credit-SMS.apk -Force
           Get-FileHash release/QatFarmMobile-VIP-2.0.1-Credit-SMS.apk -Algorithm SHA256 | Format-List | Out-File release/SHA256.txt
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload final APK
+        uses: actions/upload-artifact@v4
         with:
           name: QatFarmMobile-VIP-2.0.1-Credit-SMS-FINAL
           path: release/*
+          if-no-files-found: error
           retention-days: 30
 
-  smoke:
-    needs: build
+  smoke-test-android:
+    needs: build-android
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download final APK
+        uses: actions/download-artifact@v4
         with:
           name: QatFarmMobile-VIP-2.0.1-Credit-SMS-FINAL
           path: apk
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
       - name: Install and verify startup
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -158,8 +196,10 @@ jobs:
             test -s app-pid.txt
             grep -q 'QATFARM_STARTUP_OK' logcat.txt
             ! grep -q 'QATFARM_STARTUP_ERROR' logcat.txt
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload startup diagnostics
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: QatFarmMobile-2.0.1-startup-diagnostics-final
           path: |
