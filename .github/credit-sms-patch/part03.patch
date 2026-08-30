@@ -1,0 +1,135 @@
+--- a/QatFarmMobile_Android/QatFarm.Mobile/QatFarm.Mobile.csproj
++++ b/QatFarmMobile_Android/QatFarm.Mobile/QatFarm.Mobile.csproj
+@@ -9,10 +9,10 @@
+     <Nullable>enable</Nullable>
+     <ApplicationTitle>نظام زراعي عواد سوفت</ApplicationTitle>
+     <ApplicationId>com.qatfarm.mobile</ApplicationId>
+-    <ApplicationDisplayVersion>2.0.0</ApplicationDisplayVersion>
+-    <ApplicationVersion>20</ApplicationVersion>
++    <ApplicationDisplayVersion>2.0.1</ApplicationDisplayVersion>
++    <ApplicationVersion>21</ApplicationVersion>
+     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+-    <AndroidPackageFormats>aab;apk</AndroidPackageFormats>
++    <AndroidPackageFormats>apk</AndroidPackageFormats>
+     <AndroidUseAapt2>true</AndroidUseAapt2>
+     <PublishTrimmed>false</PublishTrimmed>
+     <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/Services/DebtSmsService.cs b/QatFarmMobile_Android/QatFarm.Mobile/Services/DebtSmsService.cs
+new file mode 100644
+index 0000000..629e939
+--- /dev/null
++++ b/QatFarmMobile_Android/QatFarm.Mobile/Services/DebtSmsService.cs
+@@ -0,0 +1,71 @@
++using Android.Telephony;
++using Microsoft.Maui.ApplicationModel;
++using QatFarm.Mobile.Models;
++
++namespace QatFarm.Mobile.Services;
++
++public sealed record DebtSmsResult(bool Sent, string Message);
++
++public sealed class SendSmsPermission : Permissions.BasePlatformPermission
++{
++    public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
++    [
++        (Android.Manifest.Permission.SendSms, true)
++    ];
++}
++
++public sealed class DebtSmsService
++{
++    public async Task<DebtSmsResult> SendCreditAlertAsync(Customer customer, decimal balance, decimal limit, bool blocked)
++    {
++        if (!customer.DebtAlertEnabled)
++            return new(false, "تنبيه الرسائل غير مفعل لهذا العميل.");
++        if (string.IsNullOrWhiteSpace(customer.Phone))
++            return new(false, "رقم العميل غير مسجل.");
++
++        try
++        {
++            var permission = await Permissions.CheckStatusAsync<SendSmsPermission>();
++            if (permission != PermissionStatus.Granted)
++            {
++                permission = await MainThread.InvokeOnMainThreadAsync(
++                    () => Permissions.RequestAsync<SendSmsPermission>());
++            }
++
++            if (permission != PermissionStatus.Granted)
++                return new(false, "لم يتم منح التطبيق إذن إرسال الرسائل SMS.");
++
++            var phone = NormalizePhone(customer.Phone);
++            if (string.IsNullOrWhiteSpace(phone))
++                return new(false, "رقم العميل غير صالح.");
++
++            var seller = string.IsNullOrWhiteSpace(customer.SellerPhone)
++                ? string.Empty
++                : $" البائع: {NormalizePhone(customer.SellerPhone)}.";
++            var status = blocked ? "تم إيقاف زيادة الدين" : "بلغ رصيدك الحد الائتماني";
++            var text = $"عواد سوفت: {status}. الرصيد {balance:N0} ر.ي، الحد {limit:N0} ر.ي. يرجى السداد.{seller}";
++
++            var sms = SmsManager.Default;
++            if (sms is null)
++                return new(false, "خدمة SMS غير متاحة على هذا الهاتف.");
++
++            var parts = sms.DivideMessage(text);
++            foreach (var part in parts)
++                sms.SendTextMessage(phone, null, part, null, null);
++
++            return new(true, "تم إرسال رسالة SMS للعميل.");
++        }
++        catch (Exception ex)
++        {
++            return new(false, $"تعذر إرسال SMS: {ex.Message}");
++        }
++    }
++
++    private static string NormalizePhone(string value)
++    {
++        var text = value.Trim();
++        var plus = text.StartsWith('+');
++        var digits = new string(text.Where(char.IsDigit).ToArray());
++        return plus && digits.Length > 0 ? "+" + digits : digits;
++    }
++}
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/Services/QatFarmService.cs b/QatFarmMobile_Android/QatFarm.Mobile/Services/QatFarmService.cs
+index cdcb43a..f722a68 100644
+--- a/QatFarmMobile_Android/QatFarm.Mobile/Services/QatFarmService.cs
++++ b/QatFarmMobile_Android/QatFarm.Mobile/Services/QatFarmService.cs
+@@ -9,11 +9,13 @@ public sealed class QatFarmService
+ {
+     private readonly MobileDb _db;
+     private readonly AppSession _session;
++    private readonly DebtSmsService _debtSms;
+ 
+-    public QatFarmService(MobileDb db, AppSession session)
++    public QatFarmService(MobileDb db, AppSession session, DebtSmsService debtSms)
+     {
+         _db = db;
+         _session = session;
++        _debtSms = debtSms;
+     }
+ 
+     private async Task<SQLiteAsyncConnection> DbAsync() => await _db.GetAsync();
+@@ -95,6 +97,76 @@ public sealed class QatFarmService
+         }).ToList();
+     }
+ 
++    private static string? NormalizePhoneForStorage(string? value)
++    {
++        if (string.IsNullOrWhiteSpace(value)) return null;
++        var text = value.Trim();
++        var plus = text.StartsWith('+');
++        var digits = new string(text.Where(char.IsDigit).ToArray());
++        return digits.Length == 0 ? null : plus ? "+" + digits : digits;
++    }
++
++    private static async Task<decimal> CalculateCustomerBalanceAsync(SQLiteAsyncConnection db, Customer customer, long? excludeInvoiceId = null)
++    {
++        var invoices = await db.Table<SalesInvoice>()
++            .Where(x => !x.IsDeleted && x.Status == InvoiceStatus.Posted && x.CustomerId == customer.Id)
++            .ToListAsync();
++        if (excludeInvoiceId.HasValue) invoices = invoices.Where(x => x.Id != excludeInvoiceId.Value).ToList();
++
++        var openingPayments = await db.Table<CustomerPayment>()
++            .Where(x => !x.IsDeleted && x.CustomerId == customer.Id && x.SalesInvoiceId == null)
++            .ToListAsync();
