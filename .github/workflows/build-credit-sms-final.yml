@@ -24,20 +24,37 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Prepare exact VIP source and apply credit SMS patch
+      - name: Download exact exported VIP 2.0 source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl.exe -L --fail-with-body `
+            -H "Authorization: Bearer $env:GH_TOKEN" `
+            -H "Accept: application/vnd.github+json" `
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9737260061/zip" `
+            -o merged-source.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive merged-source.zip source -Force
+
+      - name: Apply credit limit and SMS patch to exact source
         shell: pwsh
         run: |
-          Expand-Archive QatFarmMobile_Source_1.2.1_FIXED.zip source -Force
-          Expand-Archive QatFarmMobile_VIP_Patch_2.0.0.zip source -Force
           $parts = Get-ChildItem '.github/credit-sms-patch/part*.patch' | Sort-Object Name
           if ($parts.Count -ne 5) { throw 'Expected 5 patch parts.' }
           $patch = Join-Path $env:RUNNER_TEMP 'credit-sms.patch'
           $text = ($parts | ForEach-Object { [IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8) }) -join ''
           [IO.File]::WriteAllText($patch, $text, [Text.UTF8Encoding]::new($false))
-          git apply --check --directory=source $patch
+          Push-Location source
+          git init
+          git add .
+          git -c user.email=build@awadsoft.local -c user.name='AWAD SOFT Build' commit -m baseline
+          git apply --check $patch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git apply --directory=source $patch
+          git apply $patch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
           $project = Get-ChildItem source -Recurse -Filter QatFarm.Mobile.csproj | Select-Object -First 1
           $key = Get-ChildItem source -Recurse -Filter QatFarmMobile.keystore | Select-Object -First 1
           if (-not $project -or -not $key) { throw 'Project or stable signing key missing.' }
