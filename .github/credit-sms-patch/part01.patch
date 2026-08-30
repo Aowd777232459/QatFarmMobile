@@ -1,0 +1,59 @@
+diff --git a/QatFarmMobile_Android/QatFarm.Mobile/Components/Pages/Customers.razor b/QatFarmMobile_Android/QatFarm.Mobile/Components/Pages/Customers.razor
+index ef59ed2..89b49b1 100644
+--- a/QatFarmMobile_Android/QatFarm.Mobile/Components/Pages/Customers.razor
++++ b/QatFarmMobile_Android/QatFarm.Mobile/Components/Pages/Customers.razor
+@@ -6,12 +6,17 @@
+ <div class="panel">
+  <EditForm Model="model" OnValidSubmit="SaveAsync">
+   <div class="form-grid">
+-   <div><label>الاسم</label><InputText class="form-control" @bind-Value="model.Name" /></div>
+-   <div><label>الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
++   <div><label>اسم العميل</label><InputText class="form-control" @bind-Value="model.Name" /></div>
++   <div><label>رقم العميل</label><InputText class="form-control" @bind-Value="model.Phone" placeholder="مثال: 777123456" /></div>
++   <div><label>رقم البائع المرتبط</label><InputText class="form-control" @bind-Value="model.SellerPhone" placeholder="رقم البائع للتواصل" /></div>
+    <div><label>المنطقة</label><InputText class="form-control" @bind-Value="model.Region" /></div>
+-   <div><label>حد الائتمان</label><InputNumber class="form-control" @bind-Value="model.CreditLimit" /></div>
++   <div><label>الرصيد الافتتاحي</label><InputNumber class="form-control" @bind-Value="model.OpeningBalance" /></div>
++   <div><label>الحد الائتماني</label><InputNumber class="form-control" @bind-Value="model.CreditLimit" /></div>
+   </div>
++  <div class="inline-warning">الحد الافتراضي للعميل الجديد 100,000 ر.ي. يمكنك تغييره لأي مبلغ. عند محاولة تجاوز الحد يوقف النظام الزيادة ويرسل تنبيه SMS إلى رقم العميل من شريحة الهاتف.</div>
++  <label class="checkbox-line"><InputCheckbox @bind-Value="model.DebtAlertEnabled" /> تفعيل رسالة SMS عند بلوغ/تجاوز الحد</label>
+   <label>العنوان</label><InputText class="form-control" @bind-Value="model.Address" />
++  <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
+   <div class="actions"><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="Reset">جديد</button></div>
+  </EditForm>
+  @if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+@@ -20,10 +25,17 @@
+ <div class="card-list">
+ @foreach (var row in rows)
+ {
+- <div class="data-card">
++ var available = Math.Max(0, row.Customer.CreditLimit - row.Balance);
++ var limitReached = row.Balance >= row.Customer.CreditLimit && row.Balance > 0;
++ <div class="data-card @(limitReached ? "credit-limit-reached" : "")">
+   <div class="grow">
+-   <strong>@row.Customer.Name</strong><small>@row.Customer.Phone — @row.Customer.Region</small>
+-   <div class="money-line"><span>الرصيد: <b>@row.Balance.ToString("N2")</b></span></div>
++   <strong>@row.Customer.Name</strong>
++   <small>العميل: @(row.Customer.Phone ?? "بدون رقم") — البائع: @(row.Customer.SellerPhone ?? "غير محدد") — @row.Customer.Region</small>
++   <div class="money-line"><span>الدين: <b>@row.Balance.ToString("N2")</b></span><span>الحد: <b>@row.Customer.CreditLimit.ToString("N2")</b></span><span>المتاح: <b>@available.ToString("N2")</b></span></div>
++   @if (limitReached)
++   { <div class="alert danger">⚠ بلغ العميل الحد الائتماني. لا يُسمح بزيادة الدين.</div> }
++   else if (row.Customer.CreditLimit > 0 && row.Balance >= row.Customer.CreditLimit * 0.8m)
++   { <div class="inline-warning">تنبيه: العميل استخدم أكثر من 80% من الحد الائتماني.</div> }
+   </div>
+   <div class="actions vertical">
+    @if (Session.CanRecordPayments && row.Balance > 0)
+@@ -62,11 +74,11 @@
+  private PaymentMethod paymentMethod=PaymentMethod.Cash; private string? paymentReference;
+  protected override async Task OnInitializedAsync()=>await LoadAsync();
+  private async Task LoadAsync()=>rows=await Service.GetCustomersAsync();
+- private async Task SaveAsync(){try{await Service.SaveCustomerAsync(model);ok=true;message="تم الحفظ.";Reset();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+- private void Edit(Customer x)=>model=new Customer{Id=x.Id,Name=x.Name,Phone=x.Phone,Region=x.Region,Address=x.Address,OpeningBalance=x.OpeningBalance,CreditLimit=x.CreditLimit,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt};
+- private void Reset()=>model=new Customer();
++ private async Task SaveAsync(){try{await Service.SaveCustomerAsync(model);ok=true;message="تم حفظ العميل والحد الائتماني.";Reset();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
++ private void Edit(Customer x)=>model=new Customer{Id=x.Id,SyncKey=x.SyncKey,Name=x.Name,Phone=x.Phone,SellerPhone=x.SellerPhone,Region=x.Region,Address=x.Address,OpeningBalance=x.OpeningBalance,CreditLimit=x.CreditLimit,DebtAlertEnabled=x.DebtAlertEnabled,LastDebtAlertAt=x.LastDebtAlertAt,LastDebtAlertBalance=x.LastDebtAlertBalance,LastDebtAlertLimit=x.LastDebtAlertLimit,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt};
++ private void Reset()=>model=new Customer{CreditLimit=100000m,DebtAlertEnabled=true};
+  private async Task DeleteAsync(long id){try{await Service.DeleteCustomerAsync(id);await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+  private void StartPayment(CustomerBalanceRow row){paymentCustomer=row;paymentAmount=row.Balance;paymentReference=null;}
+  private void ClosePayment(){paymentCustomer=null;paymentAmount=0;}
