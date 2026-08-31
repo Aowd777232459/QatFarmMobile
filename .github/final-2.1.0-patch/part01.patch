@@ -1,0 +1,184 @@
+diff --git a/Components/Login.razor b/Components/Login.razor
+index 11e4031..1a4ff32 100644
+--- a/Components/Login.razor
++++ b/Components/Login.razor
+@@ -2,39 +2,30 @@
+ 
+ <div class="login-page">
+  <div class="awad-watermark login-watermark" aria-hidden="true"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
+- <div class="login-ambient login-ambient-a"></div>
+- <div class="login-ambient login-ambient-b"></div>
+- <div class="login-card glass-card @(needsSetup ? "setup-card" : "")">
+-  <div class="brand-mark-wrap"><img class="brand-mark" src="images/app_icon.png" alt="مزارع القات" /></div>
++ <div class="login-card glass-card">
++  <div class="brand-mark-wrap"><img class="brand-mark" src="images/app_icon.png" alt="" /></div>
+   <div class="login-brand-copy"><h1>نظام زراعي عواد سوفت</h1></div>
+ 
+   @if (!ready)
+   {
+-   <div class="loading">جارٍ تجهيز النظام...</div>
++   <div class="loading">جارٍ التجهيز...</div>
+   }
+-  else if (needsSetup)
++  else if (!hasUsers || needsCodeSetup)
+   {
+-   <div class="first-run-head"><span>الإعداد الآمن لأول تشغيل</span><strong>أنشئ حساب مدير النظام</strong><small>لن تُحفظ كلمة مرور افتراضية داخل التطبيق.</small></div>
+    <EditForm Model="setup" OnValidSubmit="SetupAsync">
+-    <label>اسم المدير</label><InputText class="form-control" @bind-Value="setup.FullName" autocomplete="name" />
+-    <label>البريد الإلكتروني</label><InputText class="form-control" @bind-Value="setup.Email" autocomplete="email" />
+-    <div class="setup-password-grid">
+-     <div><label>كلمة المرور</label><InputText class="form-control" type="password" @bind-Value="setup.Password" autocomplete="new-password" /></div>
+-     <div><label>تأكيد كلمة المرور</label><InputText class="form-control" type="password" @bind-Value="setup.ConfirmPassword" autocomplete="new-password" /></div>
+-    </div>
++    <label>رمز دخول المدير</label>
++    <InputText class="form-control access-code-input" type="password" maxlength="6" @bind-Value="setup.AccessCode" autocomplete="new-password" />
+     @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+-    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ إنشاء الحساب..." : "إنشاء المدير وبدء العمل")</button>
++    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الحفظ..." : "حفظ الرمز والدخول")</button>
+    </EditForm>
+   }
+   else
+   {
+    <EditForm Model="model" OnValidSubmit="LoginAsync">
+-    <label>البريد الإلكتروني</label>
+-    <InputText class="form-control" @bind-Value="model.Email" autocomplete="username" />
+-    <label>كلمة المرور</label>
+-    <InputText class="form-control" type="password" @bind-Value="model.Password" autocomplete="current-password" />
++    <label>رمز الدخول</label>
++    <InputText class="form-control access-code-input" type="password" maxlength="6" @bind-Value="model.AccessCode" autocomplete="current-password" />
+     @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+-    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الدخول..." : "دخول آمن")</button>
++    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الدخول..." : "دخول")</button>
+    </EditForm>
+   }
+  </div>
+@@ -47,11 +38,16 @@
+  private string? error;
+  private bool busy;
+  private bool ready;
+- private bool needsSetup;
++ private bool hasUsers;
++ private bool needsCodeSetup;
+ 
+  protected override async Task OnInitializedAsync()
+  {
+- try { needsSetup = !await Session.HasUsersAsync(); }
++  try
++  {
++   hasUsers = await Session.HasUsersAsync();
++   needsCodeSetup = hasUsers && await Session.NeedsAccessCodeSetupAsync();
++  }
+   catch (Exception ex) { Console.Error.WriteLine($"QATFARM_STARTUP_ERROR {ex}"); error = $"تعذر تجهيز قاعدة البيانات: {ex.Message}"; }
+   finally { ready = true; }
+   if (string.IsNullOrWhiteSpace(error)) Console.WriteLine("QATFARM_STARTUP_OK");
+@@ -63,11 +59,13 @@
+   busy = true; error = null;
+   try
+   {
+-   var result = await Session.CreateFirstAdministratorAsync(setup);
++   var result = hasUsers
++    ? await Session.SetupExistingAdministratorAccessCodeAsync(setup.AccessCode)
++    : await Session.CreateFirstAdministratorAsync(setup);
+    if (!result.Success) { error = result.Message; return; }
+    await OnLoggedIn.InvokeAsync();
+   }
+-  catch (Exception ex) { error = $"تعذر إنشاء حساب المدير: {ex.Message}"; }
++  catch (Exception ex) { error = $"تعذر حفظ رمز الدخول: {ex.Message}"; }
+   finally { busy = false; }
+  }
+ 
+@@ -77,7 +75,7 @@
+   busy = true; error = null;
+   try
+   {
+-   var result = await Session.LoginAsync(model.Email, model.Password);
++   var result = await Session.LoginAsync(model.AccessCode);
+    if (!result.Success) { error = result.Message; return; }
+    await OnLoggedIn.InvokeAsync();
+   }
+diff --git a/Components/MobileRoot.razor b/Components/MobileRoot.razor
+index 191e8a7..67474ad 100644
+--- a/Components/MobileRoot.razor
++++ b/Components/MobileRoot.razor
+@@ -2,6 +2,7 @@
+ @inject AppSession Session
+ @inject NavigationManager Navigation
+ @inject LocalSyncService LocalSync
++@inject ZakatNotificationService ZakatNotifications
+ 
+ @if (!Session.IsAuthenticated)
+ {
+@@ -46,7 +47,7 @@ else
+         LocalSync.Start();
+     }
+ 
+-    private Task HandleLoggedInAsync() => InvokeAsync(StateHasChanged);
++    private async Task HandleLoggedInAsync() { await ZakatNotifications.RefreshAsync(); await InvokeAsync(StateHasChanged); }
+ 
+     private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
+ 
+diff --git a/Components/Pages/Accounting.razor b/Components/Pages/Accounting.razor
+index be784d6..99e5a95 100644
+--- a/Components/Pages/Accounting.razor
++++ b/Components/Pages/Accounting.razor
+@@ -4,11 +4,8 @@
+ 
+ <section class="accounting-hero">
+  <div>
+-  <span class="vip-kicker">المركز المالي التنفيذي</span>
+   <h1>المحاسبة والتحليل</h1>
+-  <p>صورة مالية موحدة للمبيعات والتكاليف والتحصيل والسيولة والالتزامات.</p>
+  </div>
+- <span class="vip-version">VIP 2.0</span>
+ </section>
+ 
+ <div class="filter-bar accounting-filter">
+@@ -17,7 +14,7 @@
+   @foreach (var farm in farms) { <option value="@farm.Id">@farm.Name</option> }
+  </InputSelect>
+  <input class="form-control" type="number" min="2000" max="2100" @bind="year" aria-label="السنة" />
+- <div class="filter-actions"><button class="btn primary" @onclick="LoadAsync" disabled="@loading">@(loading ? "جارٍ التحليل..." : "تحليل")</button><button class="btn" @onclick="ExportPdfAsync" disabled="@(loading || exporting)">@(exporting ? "جارٍ التجهيز..." : "PDF تنفيذي")</button></div>
++ <div class="filter-actions"><button class="btn primary" @onclick="LoadAsync" disabled="@loading">@(loading ? "جارٍ التحليل..." : "تحليل")</button><button class="btn" @onclick="ExportPdfAsync" disabled="@(loading || exporting)">@(exporting ? "جارٍ التجهيز..." : "PDF")</button></div>
+ </div>
+ 
+ @if (!string.IsNullOrWhiteSpace(error))
+@@ -56,7 +53,7 @@ else if (summary is not null)
+  </div>
+ 
+  <section class="finance-panel ratio-panel">
+-  <div class="finance-section-head"><div><span>مؤشرات الأداء</span><strong>قراءة سريعة لجودة الحسابات</strong></div></div>
++  <div class="finance-section-head"><div><span>مؤشرات الأداء</span></div></div>
+   <div class="ratio-grid">
+    <div class="ratio-item"><div><span>التحصيل</span><b>@Percent(summary.CollectionPercent)</b></div><div class="ratio-track"><i style="width:@Progress(summary.CollectionPercent)"></i></div></div>
+    <div class="ratio-item"><div><span>هامش الربح</span><b>@Percent(summary.NetMarginPercent)</b></div><div class="ratio-track profit"><i style="width:@Progress(summary.NetMarginPercent)"></i></div></div>
+@@ -65,7 +62,7 @@ else if (summary is not null)
+  </section>
+ 
+  <section class="finance-panel">
+-  <div class="finance-section-head"><div><span>الأداء الشهري</span><strong>المبيعات والتكاليف وصافي الربح</strong></div></div>
++  <div class="finance-section-head"><div><span>الأداء الشهري</span></div></div>
+   <div class="month-performance">
+   @foreach (var month in summary.Months)
+   {
+@@ -83,7 +80,7 @@ else if (summary is not null)
+  </section>
+ 
+  <section class="finance-panel">
+-  <div class="finance-section-head"><div><span>مقارنة المزارع</span><strong>ترتيب الربحية والذمم والالتزامات</strong></div></div>
++  <div class="finance-section-head"><div><span>مقارنة المزارع</span></div></div>
+   <div class="vip-table-wrap">
+    <table class="vip-table">
+     <thead><tr><th>المزرعة</th><th>المبيعات</th><th>التكاليف</th><th>الصافي</th><th>الهامش</th><th>لنا</th><th>علينا</th></tr></thead>
+@@ -99,7 +96,7 @@ else if (summary is not null)
+  </section>
+ 
+  <section class="finance-panel">
+-  <div class="finance-section-head"><div><span>سجل الحركة النقدية</span><strong>آخر عمليات القبض والصرف مرتبة بالتاريخ</strong></div></div>
++  <div class="finance-section-head"><div><span>سجل الحركة النقدية</span></div></div>
+   <div class="cash-ledger">
+   @foreach (var movement in summary.RecentCashMovements)
+   {
+@@ -146,7 +143,7 @@ else if (summary is not null)
+   try
+   {
+    var path = await Pdf.CreateExecutiveAccountingPdfAsync(farmId == 0 ? null : farmId, year);
