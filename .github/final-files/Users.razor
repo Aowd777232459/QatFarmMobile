@@ -1,0 +1,48 @@
+@page "/users"
+@inject QatFarmService Service
+@inject AppSession Session
+
+@if(!Session.IsAdmin)
+{
+ <div class="alert danger">هذه الصفحة للمدير فقط.</div>
+}
+else
+{
+ <h1>إدارة المستخدمين</h1>
+ <div class="panel">
+  <EditForm Model="model" OnValidSubmit="SaveAsync">
+   <div class="form-grid">
+    <div><label>الاسم</label><InputText class="form-control" @bind-Value="model.FullName" /></div>
+    <div><label>رمز الدخول من 6 أحرف @(model.Id>0?"(اتركه فارغاً دون تغيير)":"")</label><InputText class="form-control" maxlength="6" @bind-Value="model.AccessCode" /></div>
+    <div><label>الدور</label><InputSelect class="form-control" @bind-Value="model.Role">
+     <option value="@UserRole.Administrator">مدير</option><option value="@UserRole.Accountant">محاسب</option><option value="@UserRole.Employee">موظف</option>
+    </InputSelect></div>
+   </div>
+   <div class="permission-grid">
+    <label class="check"><InputCheckbox @bind-Value="model.CanEditInvoices" /> تعديل الفواتير</label>
+    <label class="check"><InputCheckbox @bind-Value="model.CanDeleteInvoices" /> حذف الفواتير</label>
+    <label class="check"><InputCheckbox @bind-Value="model.IsActive" /> الحساب نشط</label>
+   </div>
+   <div class="actions"><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="Reset">جديد</button></div>
+  </EditForm>
+  @if(!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+ </div>
+ <div class="card-list">
+ @foreach(var x in users)
+ {
+  <div class="data-card">
+   <div class="grow"><strong>@x.FullName</strong><small>@RoleText(x.Role) — @(x.IsActive?"نشط":"موقوف")</small><div class="user-permissions"><span>تعديل: @(x.Role==UserRole.Administrator || x.CanEditInvoices?"نعم":"لا")</span><span>حذف: @(x.Role==UserRole.Administrator || x.CanDeleteInvoices?"نعم":"لا")</span></div></div>
+   <button class="btn small" @onclick="() => Edit(x)">تعديل</button>
+  </div>
+ }
+ </div>
+}
+@code {
+ private List<AppUser> users=[]; private UserEditModel model=new(){IsActive=true}; private string? message; private bool ok;
+ protected override async Task OnInitializedAsync(){if(Session.IsAdmin)await LoadAsync();}
+ private async Task LoadAsync()=>users=await Service.GetUsersAsync();
+ private async Task SaveAsync(){try{await Service.SaveUserAsync(model);ok=true;message="تم الحفظ.";Reset();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private void Edit(AppUser x)=>model=new UserEditModel{Id=x.Id,FullName=x.FullName,Role=x.Role,CanEditInvoices=x.CanEditInvoices,CanDeleteInvoices=x.CanDeleteInvoices,IsActive=x.IsActive};
+ private void Reset()=>model=new UserEditModel{IsActive=true};
+ private static string RoleText(UserRole r)=>r switch{UserRole.Administrator=>"مدير",UserRole.Accountant=>"محاسب",_=>"موظف"};
+}
