@@ -38,8 +38,9 @@ jobs:
           cd source/QatFarmMobile_Android/QatFarm.Mobile
           git init -q
           git config core.autocrlf false
-          git apply --check /tmp/final-2.1.0.patch
-          git apply /tmp/final-2.1.0.patch
+          git apply --check --exclude=Components/Pages/Users.razor /tmp/final-2.1.0.patch
+          git apply --exclude=Components/Pages/Users.razor /tmp/final-2.1.0.patch
+          cp "$GITHUB_WORKSPACE/.github/final-files/Users.razor" Components/Pages/Users.razor
 
           grep -q '<ApplicationDisplayVersion>2.1.0</ApplicationDisplayVersion>' QatFarm.Mobile.csproj
           grep -q '<ApplicationVersion>30</ApplicationVersion>' QatFarm.Mobile.csproj
@@ -56,6 +57,7 @@ jobs:
           grep -q 'ZakatNotificationService' Services/ZakatNotificationService.cs
           grep -q 'ZakatRecipientName' Models/DomainModels.cs
           grep -q 'data-background' wwwroot/js/ui-preferences.js
+          grep -q 'رمز الدخول من 6 أحرف' Components/Pages/Users.razor
           ! grep -R -n -E 'VIP 2\.0|VIP Accounting|لوحة التحكم VIP|المركز المالي VIP' Components || exit 1
 
       - name: Upload prepared 2.1.0 source
