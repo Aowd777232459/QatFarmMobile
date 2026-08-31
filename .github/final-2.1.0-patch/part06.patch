@@ -1,0 +1,151 @@
++    public async Task<(bool Success, string Message)> LoginAsync(string accessCode)
++    {
++        var code = NormalizeAccessCode(accessCode);
++        if (code is null) return (false, "أدخل رمز الدخول المكون من 6 أحرف.");
++        var db = await _db.GetAsync();
++        var users = await db.Table<AppUser>().Where(x => !x.IsDeleted && x.IsActive).ToListAsync();
++        var user = users.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.AccessCodeHash) &&
++            PasswordHasher.Verify(code, x.AccessCodeHash, x.AccessCodeSalt));
++        if (user is null) return (false, "رمز الدخول غير صحيح أو الحساب موقوف.");
+         user.LastLoginAt = DateTime.Now;
+         await db.UpdateAsync(user);
+         CurrentUser = user;
+@@ -65,5 +97,11 @@ public sealed class AppSession
+         return (true, string.Empty);
+     }
+ 
++    public static string? NormalizeAccessCode(string? value)
++    {
++        var code = value?.Trim() ?? string.Empty;
++        return code.Length == 6 && code.All(c => !char.IsWhiteSpace(c)) ? code : null;
++    }
++
+     public void Logout() { CurrentUser = null; Changed?.Invoke(); }
+ }
+diff --git a/Services/DebtSmsService.cs b/Services/DebtSmsService.cs
+index 629e939..bd49f0b 100644
+--- a/Services/DebtSmsService.cs
++++ b/Services/DebtSmsService.cs
+@@ -5,6 +5,7 @@ using QatFarm.Mobile.Models;
+ namespace QatFarm.Mobile.Services;
+ 
+ public sealed record DebtSmsResult(bool Sent, string Message);
++public sealed record SaleSmsItem(string Name, int Quantity, decimal UnitPrice, decimal Total);
+ 
+ public sealed class SendSmsPermission : Permissions.BasePlatformPermission
+ {
+@@ -16,13 +17,41 @@ public sealed class SendSmsPermission : Permissions.BasePlatformPermission
+ 
+ public sealed class DebtSmsService
+ {
+-    public async Task<DebtSmsResult> SendCreditAlertAsync(Customer customer, decimal balance, decimal limit, bool blocked)
++    public Task<DebtSmsResult> SendCreditAlertAsync(Customer customer, decimal total, decimal paid,
++        decimal balance, decimal limit, bool blocked)
+     {
+         if (!customer.DebtAlertEnabled)
+-            return new(false, "تنبيه الرسائل غير مفعل لهذا العميل.");
++            return Task.FromResult(new DebtSmsResult(false, "تنبيه الرسائل غير مفعل لهذا العميل."));
+         if (string.IsNullOrWhiteSpace(customer.Phone))
+-            return new(false, "رقم العميل غير مسجل.");
++            return Task.FromResult(new DebtSmsResult(false, "رقم العميل غير مسجل."));
+ 
++        var seller = string.IsNullOrWhiteSpace(customer.SellerPhone)
++            ? string.Empty
++            : $" البائع: {NormalizePhone(customer.SellerPhone)}.";
++        var status = blocked ? "تم إيقاف عملية تتجاوز الحد الائتماني" : "بلغ حسابك الحد الائتماني";
++        var text = $"عواد سوفت: {status}. إجمالي الحساب {total:N0} ر.ي، المدفوع {paid:N0} ر.ي، المتبقي {balance:N0} ر.ي، الحد {limit:N0} ر.ي.{seller}";
++        return SendAsync(customer.Phone, text);
++    }
++
++    public Task<DebtSmsResult> SendSaleReceiptAsync(string phone, string buyerName, SalesInvoice invoice,
++        IReadOnlyList<SaleSmsItem> items)
++    {
++        var details = string.Join("، ", items.Select(x => $"{x.Name} {x.Quantity:N0}×{x.UnitPrice:N0}={x.Total:N0}"));
++        var text = $"عواد سوفت - تفاصيل البيع {invoice.InvoiceNumber}: {details}. الإجمالي {invoice.GrossAmount:N0} ر.ي، المدفوع {invoice.AmountPaid:N0} ر.ي، المتبقي {invoice.AmountDue:N0} ر.ي. العميل: {buyerName}.";
++        return SendAsync(phone, text);
++    }
++
++    public Task<DebtSmsResult> SendAccountUpdateAsync(Customer customer, decimal paymentAmount,
++        decimal total, decimal paid, decimal balance)
++    {
++        if (string.IsNullOrWhiteSpace(customer.Phone))
++            return Task.FromResult(new DebtSmsResult(false, "رقم العميل غير مسجل."));
++        var text = $"عواد سوفت: تم تسجيل دفعة {paymentAmount:N0} ر.ي. إجمالي الحساب {total:N0} ر.ي، إجمالي المدفوع {paid:N0} ر.ي، المتبقي {balance:N0} ر.ي.";
++        return SendAsync(customer.Phone, text);
++    }
++
++    private static async Task<DebtSmsResult> SendAsync(string phoneValue, string text)
++    {
+         try
+         {
+             var permission = await Permissions.CheckStatusAsync<SendSmsPermission>();
+@@ -31,29 +60,16 @@ public sealed class DebtSmsService
+                 permission = await MainThread.InvokeOnMainThreadAsync(
+                     () => Permissions.RequestAsync<SendSmsPermission>());
+             }
+-
+             if (permission != PermissionStatus.Granted)
+                 return new(false, "لم يتم منح التطبيق إذن إرسال الرسائل SMS.");
+ 
+-            var phone = NormalizePhone(customer.Phone);
+-            if (string.IsNullOrWhiteSpace(phone))
+-                return new(false, "رقم العميل غير صالح.");
+-
+-            var seller = string.IsNullOrWhiteSpace(customer.SellerPhone)
+-                ? string.Empty
+-                : $" البائع: {NormalizePhone(customer.SellerPhone)}.";
+-            var status = blocked ? "تم إيقاف زيادة الدين" : "بلغ رصيدك الحد الائتماني";
+-            var text = $"عواد سوفت: {status}. الرصيد {balance:N0} ر.ي، الحد {limit:N0} ر.ي. يرجى السداد.{seller}";
+-
++            var phone = NormalizePhone(phoneValue);
++            if (string.IsNullOrWhiteSpace(phone)) return new(false, "رقم الهاتف غير صالح.");
+             var sms = SmsManager.Default;
+-            if (sms is null)
+-                return new(false, "خدمة SMS غير متاحة على هذا الهاتف.");
+-
+-            var parts = sms.DivideMessage(text);
+-            foreach (var part in parts)
++            if (sms is null) return new(false, "خدمة SMS غير متاحة على هذا الهاتف.");
++            foreach (var part in sms.DivideMessage(text))
+                 sms.SendTextMessage(phone, null, part, null, null);
+-
+-            return new(true, "تم إرسال رسالة SMS للعميل.");
++            return new(true, "تم إرسال رسالة SMS.");
+         }
+         catch (Exception ex)
+         {
+diff --git a/Services/LocalSyncService.cs b/Services/LocalSyncService.cs
+index a2d7be2..1a8dad9 100644
+--- a/Services/LocalSyncService.cs
++++ b/Services/LocalSyncService.cs
+@@ -155,7 +155,7 @@ public sealed class LocalSyncService : IDisposable
+         var records = new List<LocalSyncRecord>();
+ 
+         records.AddRange(farms.Select(x => Record("Farm", x, new { x.Name, x.OwnerName, x.Location, x.Phone, x.Notes, x.IsActive })));
+-        records.AddRange(customers.Select(x => Record("Customer", x, new { x.Name, x.Phone, x.Region, x.Address, x.OpeningBalance, x.CreditLimit, x.Notes, x.IsActive })));
++        records.AddRange(customers.Select(x => Record("Customer", x, new { x.Name, x.Phone, x.SellerPhone, x.Region, x.Address, x.OpeningBalance, x.CreditLimit, x.DebtAlertEnabled, x.Notes, x.IsActive })));
+         records.AddRange(creditors.Select(x => Record("Creditor", x, new { x.Name, x.Phone, x.Address, x.Notes, x.IsActive })));
+         records.AddRange(cultivationTypes.Select(x => Record("CultivationExpenseType", x, new { x.Name, x.IsActive })));
+         records.AddRange(qatTypes.Select(x => Record("QatType", x, new { x.Name, x.IsActive })));
+@@ -174,7 +174,7 @@ public sealed class LocalSyncService : IDisposable
+             FarmKey = farmKeys.GetValueOrDefault(x.FarmId),
+             CustomerKey = x.CustomerId.HasValue ? customerKeys.GetValueOrDefault(x.CustomerId.Value) : null,
+             x.InvoiceDate, x.PaymentDueDate, x.BuyerName, x.BuyerPhone, x.GrossAmount,
+-            x.ZakatPercent, x.ZakatAmount, x.ZakatStatus, x.ZakatPaidAt, x.ZakatPaymentReference,
++            x.ZakatPercent, x.ZakatAmount, x.ZakatStatus, x.ZakatPaidAt, x.ZakatPaymentReference, x.ZakatRecipientName,
+             x.TotalExpenses, x.NetAmount, x.AmountPaid, x.AmountDue, x.PaymentMethod, x.PaymentStatus,
+             x.Status, x.Notes
+         })));
+@@ -236,7 +236,7 @@ public sealed class LocalSyncService : IDisposable
+             case "Customer":
+             {
+                 var d = Read<CustomerData>(r); var row = await FindAsync<Customer>(db, r.Key) ?? new Customer();
+-                Stamp(row, r); row.Name = d.Name; row.Phone = d.Phone; row.Region = d.Region; row.Address = d.Address; row.OpeningBalance = d.OpeningBalance; row.CreditLimit = d.CreditLimit; row.Notes = d.Notes; row.IsActive = d.IsActive;
++                Stamp(row, r); row.Name = d.Name; row.Phone = d.Phone; if (d.SellerPhone is not null) row.SellerPhone = d.SellerPhone; row.Region = d.Region; row.Address = d.Address; row.OpeningBalance = d.OpeningBalance; row.CreditLimit = d.CreditLimit; if (d.DebtAlertEnabled.HasValue) row.DebtAlertEnabled = d.DebtAlertEnabled.Value; row.Notes = d.Notes; row.IsActive = d.IsActive;
+                 await UpsertAsync(db, row); break;
+             }
+             case "Creditor":
+@@ -278,7 +278,7 @@ public sealed class LocalSyncService : IDisposable
+         var d = Read<InvoiceData>(r); var farm = await FindAsync<Farm>(db, d.FarmKey); if (farm is null) return;
+         var customer = string.IsNullOrWhiteSpace(d.CustomerKey) ? null : await FindAsync<Customer>(db, d.CustomerKey);
+         var row = await FindAsync<SalesInvoice>(db, r.Key) ?? new SalesInvoice(); Stamp(row, r);
