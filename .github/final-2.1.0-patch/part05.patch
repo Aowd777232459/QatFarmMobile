@@ -1,0 +1,198 @@
+         // ترقية بيانات العملاء الخاصة بالحد الائتماني والتنبيه النصي.
+         // يتم ضبط 100,000 ريال كحد افتراضي مرة واحدة فقط للعملاء السابقين
+         // عند إضافة أعمدة التنبيه لأول مرة، ثم يظل للمدير حرية تغييره حتى إلى صفر.
+diff --git a/MauiProgram.cs b/MauiProgram.cs
+index 5ab95e0..77ee585 100644
+--- a/MauiProgram.cs
++++ b/MauiProgram.cs
+@@ -18,6 +18,7 @@ public static class MauiProgram
+         builder.Services.AddSingleton<MobileDb>();
+         builder.Services.AddSingleton<AppSession>();
+         builder.Services.AddSingleton<DebtSmsService>();
++        builder.Services.AddSingleton<ZakatNotificationService>();
+         builder.Services.AddSingleton<QatFarmService>();
+         builder.Services.AddSingleton<MobilePdfService>();
+         builder.Services.AddSingleton<BackupService>();
+diff --git a/Models/DomainModels.cs b/Models/DomainModels.cs
+index 6a102f3..be11857 100644
+--- a/Models/DomainModels.cs
++++ b/Models/DomainModels.cs
+@@ -22,11 +22,17 @@ public enum ZakatPaymentStatus { Pending = 0, Paid = 1, NotApplicable = 2 }
+ [Table("AppUsers")]
+ public sealed class AppUser : LocalEntity
+ {
++    // Email/PasswordHash remain only for compatibility with existing databases.
++    // Login in the final app uses a six-character access code only.
+     [Unique, NotNull] public string Email { get; set; } = string.Empty;
+     [NotNull] public string FullName { get; set; } = string.Empty;
+     [NotNull] public string PasswordHash { get; set; } = string.Empty;
+     [NotNull] public string PasswordSalt { get; set; } = string.Empty;
++    public string AccessCodeHash { get; set; } = string.Empty;
++    public string AccessCodeSalt { get; set; } = string.Empty;
+     public UserRole Role { get; set; } = UserRole.Employee;
++    public bool CanEditInvoices { get; set; }
++    public bool CanDeleteInvoices { get; set; }
+     public bool IsActive { get; set; } = true;
+     public DateTime? LastLoginAt { get; set; }
+ }
+@@ -135,6 +141,7 @@ public sealed class SalesInvoice : LocalEntity
+     [Indexed] public ZakatPaymentStatus ZakatStatus { get; set; } = ZakatPaymentStatus.Pending;
+     public DateTime? ZakatPaidAt { get; set; }
+     public string? ZakatPaymentReference { get; set; }
++    public string? ZakatRecipientName { get; set; }
+     public decimal TotalExpenses { get; set; }
+     public decimal NetAmount { get; set; }
+     public decimal AmountPaid { get; set; }
+diff --git a/Models/ViewModels.cs b/Models/ViewModels.cs
+index df7f787..a740bc0 100644
+--- a/Models/ViewModels.cs
++++ b/Models/ViewModels.cs
+@@ -2,16 +2,12 @@ namespace QatFarm.Mobile.Models;
+ 
+ public sealed class LoginModel
+ {
+-    public string Email { get; set; } = string.Empty;
+-    public string Password { get; set; } = string.Empty;
++    public string AccessCode { get; set; } = string.Empty;
+ }
+ 
+ public sealed class FirstRunAdminModel
+ {
+-    public string FullName { get; set; } = string.Empty;
+-    public string Email { get; set; } = string.Empty;
+-    public string Password { get; set; } = string.Empty;
+-    public string ConfirmPassword { get; set; } = string.Empty;
++    public string AccessCode { get; set; } = string.Empty;
+ }
+ 
+ public sealed class InvoiceEditorModel
+@@ -107,9 +103,10 @@ public sealed class UserEditModel
+ {
+     public long Id { get; set; }
+     public string FullName { get; set; } = string.Empty;
+-    public string Email { get; set; } = string.Empty;
+-    public string Password { get; set; } = string.Empty;
++    public string AccessCode { get; set; } = string.Empty;
+     public UserRole Role { get; set; } = UserRole.Employee;
++    public bool CanEditInvoices { get; set; }
++    public bool CanDeleteInvoices { get; set; }
+     public bool IsActive { get; set; } = true;
+ }
+ 
+diff --git a/Platforms/Android/AndroidManifest.xml b/Platforms/Android/AndroidManifest.xml
+index 62e2dfa..2614982 100644
+--- a/Platforms/Android/AndroidManifest.xml
++++ b/Platforms/Android/AndroidManifest.xml
+@@ -3,6 +3,7 @@
+   <uses-permission android:name="android.permission.INTERNET" />
+   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+   <uses-permission android:name="android.permission.SEND_SMS" />
++  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+   <application
+     android:allowBackup="false"
+     android:icon="@mipmap/appicon"
+diff --git a/QatFarm.Mobile.csproj b/QatFarm.Mobile.csproj
+index 6901ad9..c40926f 100644
+--- a/QatFarm.Mobile.csproj
++++ b/QatFarm.Mobile.csproj
+@@ -9,8 +9,8 @@
+     <Nullable>enable</Nullable>
+     <ApplicationTitle>نظام زراعي عواد سوفت</ApplicationTitle>
+     <ApplicationId>com.qatfarm.mobile</ApplicationId>
+-    <ApplicationDisplayVersion>2.0.1</ApplicationDisplayVersion>
+-    <ApplicationVersion>21</ApplicationVersion>
++    <ApplicationDisplayVersion>2.1.0</ApplicationDisplayVersion>
++    <ApplicationVersion>30</ApplicationVersion>
+     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+     <AndroidPackageFormats>apk</AndroidPackageFormats>
+     <AndroidUseAapt2>true</AndroidUseAapt2>
+diff --git a/Services/AppSession.cs b/Services/AppSession.cs
+index 7c2de12..168dcfe 100644
+--- a/Services/AppSession.cs
++++ b/Services/AppSession.cs
+@@ -12,6 +12,8 @@ public sealed class AppSession
+     public bool IsAuthenticated => CurrentUser is not null;
+     public bool IsAdmin => CurrentUser?.Role == UserRole.Administrator;
+     public bool CanRecordPayments => CurrentUser?.Role is UserRole.Administrator or UserRole.Accountant;
++    public bool CanEditInvoices => IsAdmin || CurrentUser?.CanEditInvoices == true;
++    public bool CanDeleteInvoices => IsAdmin || CurrentUser?.CanDeleteInvoices == true;
+     public event Action? Changed;
+ 
+     public async Task<bool> HasUsersAsync()
+@@ -20,25 +22,33 @@ public sealed class AppSession
+         return await db.Table<AppUser>().Where(x => !x.IsDeleted).CountAsync() > 0;
+     }
+ 
++    public async Task<bool> NeedsAccessCodeSetupAsync()
++    {
++        var db = await _db.GetAsync();
++        var users = await db.Table<AppUser>().Where(x => !x.IsDeleted && x.IsActive).ToListAsync();
++        return users.Count > 0 && users.All(x => string.IsNullOrWhiteSpace(x.AccessCodeHash));
++    }
++
+     public async Task<(bool Success, string Message)> CreateFirstAdministratorAsync(FirstRunAdminModel model)
+     {
+         var db = await _db.GetAsync();
+         if (await db.Table<AppUser>().Where(x => !x.IsDeleted).CountAsync() > 0)
+             return (false, "تم إنشاء حساب الإدارة مسبقاً.");
+-        if (string.IsNullOrWhiteSpace(model.FullName)) return (false, "اسم المدير مطلوب.");
+-        if (string.IsNullOrWhiteSpace(model.Email) || !model.Email.Contains('@')) return (false, "أدخل بريداً إلكترونياً صحيحاً.");
+-        if (string.IsNullOrWhiteSpace(model.Password) || model.Password.Length < 10)
+-            return (false, "كلمة المرور يجب ألا تقل عن 10 أحرف.");
+-        if (model.Password != model.ConfirmPassword) return (false, "تأكيد كلمة المرور غير مطابق.");
++        var code = NormalizeAccessCode(model.AccessCode);
++        if (code is null) return (false, "رمز الدخول يجب أن يتكون من 6 أحرف بالضبط.");
+ 
+-        var (hash, salt) = PasswordHasher.HashPassword(model.Password);
++        var (hash, salt) = PasswordHasher.HashPassword(code);
+         var user = new AppUser
+         {
+-            FullName = model.FullName.Trim(),
+-            Email = model.Email.Trim().ToLowerInvariant(),
++            FullName = "مدير النظام",
++            Email = $"admin-{Guid.NewGuid():N}@local.awad",
+             PasswordHash = hash,
+             PasswordSalt = salt,
++            AccessCodeHash = hash,
++            AccessCodeSalt = salt,
+             Role = UserRole.Administrator,
++            CanEditInvoices = true,
++            CanDeleteInvoices = true,
+             IsActive = true,
+             LastLoginAt = DateTime.Now
+         };
+@@ -48,16 +58,38 @@ public sealed class AppSession
+         return (true, string.Empty);
+     }
+ 
+-    public async Task<(bool Success, string Message)> LoginAsync(string email, string password)
++    public async Task<(bool Success, string Message)> SetupExistingAdministratorAccessCodeAsync(string accessCode)
+     {
++        var code = NormalizeAccessCode(accessCode);
++        if (code is null) return (false, "رمز الدخول يجب أن يتكون من 6 أحرف بالضبط.");
+         var db = await _db.GetAsync();
+-        var normalized = email.Trim().ToLowerInvariant();
+-        var user = await db.Table<AppUser>()
+-            .Where(x => x.Email == normalized && !x.IsDeleted)
+-            .FirstOrDefaultAsync();
+-        if (user is null || !user.IsActive) return (false, "الحساب غير موجود أو موقوف.");
+-        if (!PasswordHasher.Verify(password, user.PasswordHash, user.PasswordSalt))
+-            return (false, "كلمة المرور غير صحيحة.");
++        var admin = (await db.Table<AppUser>().Where(x => !x.IsDeleted && x.IsActive && x.Role == UserRole.Administrator).ToListAsync())
++            .OrderBy(x => x.Id).FirstOrDefault();
++        if (admin is null) return (false, "لا يوجد حساب مدير نشط.");
++        var (hash, salt) = PasswordHasher.HashPassword(code);
++        admin.AccessCodeHash = hash;
++        admin.AccessCodeSalt = salt;
++        admin.PasswordHash = hash;
++        admin.PasswordSalt = salt;
++        admin.CanEditInvoices = true;
++        admin.CanDeleteInvoices = true;
++        admin.LastLoginAt = DateTime.Now;
++        admin.UpdatedAt = DateTime.Now;
++        await db.UpdateAsync(admin);
++        CurrentUser = admin;
++        Changed?.Invoke();
++        return (true, string.Empty);
++    }
++
