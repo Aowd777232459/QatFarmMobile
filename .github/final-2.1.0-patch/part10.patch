@@ -1,0 +1,155 @@
++            var oldUser = JsonSerializer.Serialize(new { user.FullName, user.Role, user.CanEditInvoices, user.CanDeleteInvoices, user.IsActive });
+             user.FullName = model.FullName.Trim();
+-            user.Email = email;
+             user.Role = model.Role;
++            user.CanEditInvoices = model.Role == UserRole.Administrator || model.CanEditInvoices;
++            user.CanDeleteInvoices = model.Role == UserRole.Administrator || model.CanDeleteInvoices;
+             user.IsActive = model.IsActive;
+             user.UpdatedAt = DateTime.Now;
+-            if (!string.IsNullOrWhiteSpace(model.Password))
++            if (code is not null)
+             {
+-                var (hash, salt) = PasswordHasher.HashPassword(model.Password);
++                var (hash, salt) = PasswordHasher.HashPassword(code);
++                user.AccessCodeHash = hash; user.AccessCodeSalt = salt;
+                 user.PasswordHash = hash; user.PasswordSalt = salt;
+             }
+             await db.UpdateAsync(user);
+-            await AuditAsync("تعديل مستخدم", nameof(AppUser), user.Id, oldUser, user);
++            await AuditAsync("تعديل مستخدم", nameof(AppUser), user.Id, oldUser, new { user.FullName, user.Role, user.CanEditInvoices, user.CanDeleteInvoices, user.IsActive });
+         }
+     }
+ 
+diff --git a/Services/ZakatNotificationService.cs b/Services/ZakatNotificationService.cs
+new file mode 100644
+index 0000000..479c01b
+--- /dev/null
++++ b/Services/ZakatNotificationService.cs
+@@ -0,0 +1,90 @@
++using QatFarm.Mobile.Data;
++using QatFarm.Mobile.Models;
++
++#if ANDROID
++using Android.App;
++using Android.Content;
++using Android.OS;
++using Microsoft.Maui.ApplicationModel;
++#endif
++
++namespace QatFarm.Mobile.Services;
++
++#if ANDROID
++public sealed class PostNotificationsPermission : Permissions.BasePlatformPermission
++{
++    public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
++    [
++        (Android.Manifest.Permission.PostNotifications, true)
++    ];
++}
++#endif
++
++public sealed class ZakatNotificationService
++{
++    private readonly MobileDb _db;
++    private const int NotificationId = 4201;
++    private const string ChannelId = "qatfarm-zakat";
++
++    public ZakatNotificationService(MobileDb db) => _db = db;
++
++    public async Task RefreshAsync(bool requestPermission = true)
++    {
++#if ANDROID
++        try
++        {
++            var db = await _db.GetAsync();
++            var rows = await db.Table<SalesInvoice>()
++                .Where(x => !x.IsDeleted && x.Status == InvoiceStatus.Posted &&
++                            x.ZakatStatus == ZakatPaymentStatus.Pending && x.ZakatAmount > 0)
++                .ToListAsync();
++            var manager = (NotificationManager?)Android.App.Application.Context.GetSystemService(Context.NotificationService);
++            if (manager is null) return;
++            EnsureChannel(manager);
++            if (rows.Count == 0)
++            {
++                manager.Cancel(NotificationId);
++                return;
++            }
++
++            if ((int)Build.VERSION.SdkInt >= 33)
++            {
++                var status = await Permissions.CheckStatusAsync<PostNotificationsPermission>();
++                if (status != PermissionStatus.Granted && requestPermission)
++                    status = await MainThread.InvokeOnMainThreadAsync(() => Permissions.RequestAsync<PostNotificationsPermission>());
++                if (status != PermissionStatus.Granted) return;
++            }
++
++            var total = rows.Sum(x => x.ZakatAmount);
++            Notification.Builder builder = (int)Build.VERSION.SdkInt >= 26
++                ? new Notification.Builder(Android.App.Application.Context, ChannelId)
++                : new Notification.Builder(Android.App.Application.Context);
++            var notification = builder
++                .SetContentTitle("الزكاة المعلقة")
++                .SetContentText($"{rows.Count} فاتورة — {total:N0} ر.ي بانتظار تأكيد الوصول")
++                .SetSmallIcon(Android.Resource.Drawable.IcDialogAlert)
++                .SetAutoCancel(true)
++                .Build();
++            manager.Notify(NotificationId, notification);
++        }
++        catch (Exception ex)
++        {
++            Console.Error.WriteLine($"ZAKAT_NOTIFICATION_ERROR {ex}");
++        }
++#else
++        await Task.CompletedTask;
++#endif
++    }
++
++#if ANDROID
++    private static void EnsureChannel(NotificationManager manager)
++    {
++        if ((int)Build.VERSION.SdkInt < 26) return;
++        if (manager.GetNotificationChannel(ChannelId) is not null) return;
++        manager.CreateNotificationChannel(new NotificationChannel(ChannelId, "تنبيهات الزكاة", NotificationImportance.High)
++        {
++            Description = "تنبيه عند وجود زكاة معلقة تحتاج إلى تأكيد الدفع والوصول."
++        });
++    }
++#endif
++}
+diff --git a/wwwroot/css/app.css b/wwwroot/css/app.css
+index 777a2ea..416667d 100644
+--- a/wwwroot/css/app.css
++++ b/wwwroot/css/app.css
+@@ -102,3 +102,18 @@ h1{color:var(--acc-navy)}h2,.section-title{font-size:15px;color:var(--acc-navy);
+ html[data-theme="dark"]{--acc-bg:#101713;--acc-card:#18221d;--acc-line:#314039;--acc-muted:#a7b6ae;--acc-navy:#e8f4ed;--bg:#101713;--card:#18221d;--text:#e8f4ed}html[data-theme="dark"] body,html[data-theme="dark"] .app-shell{background:#101713;color:#e8f4ed}html[data-theme="dark"] .panel,html[data-theme="dark"] .data-card,html[data-theme="dark"] .stat-card,html[data-theme="dark"] .invoice-paper-card,html[data-theme="dark"] .menu-grid a,html[data-theme="dark"] .form-control{background:#18221d!important;color:#e8f4ed!important;border-color:#314039!important}html[data-theme="dark"] .bottom-nav{background:#142019!important;border-color:#314039!important}html[data-theme="dark"] label,html[data-theme="dark"] h1,html[data-theme="dark"] h2{color:#e8f4ed!important}
+ html[data-theme="gold"]{--acc-green:#8a6719;--acc-green-2:#a47c25;--acc-gold:#d7b34b;--green:#7a5a14;--green2:#9a7420;--deep:#45340d;--acc-bg:#fbf7ed}
+ .preferences-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.sync-status{padding:10px 12px;border-radius:8px;background:#eef6f1;border:1px solid #d6e8dd;font-size:11px;margin:9px 0}.sync-status.busy{color:#8a6414;background:#fff7e4}.settings-actions{display:flex;gap:8px;flex-wrap:wrap}.inline-warning{margin-top:10px;padding:9px 11px;border-radius:7px;background:#fff7df;border:1px solid #ecd99c;color:#795916;font-size:10px;font-weight:700}@media(max-width:620px){.preferences-grid{grid-template-columns:1fr}}
++
++/* Full application background selector */
++html[data-background="none"] .app-shell:before{background-image:none!important;opacity:0!important}
++html[data-background="farm"] .app-shell:before{background-image:url('../images/farm_login.jpg')!important;opacity:.09!important}
++html[data-background="rows"] .app-shell:before{background-image:url('../images/farm_rows.jpg')!important;opacity:.09!important}
++html[data-background="qat"] .app-shell:before{background-image:url('../images/qat_vip_hero.jpg')!important;opacity:.08!important}
++html[data-background="close"] .app-shell:before{background-image:url('../images/farm_close.jpg')!important;opacity:.06!important}
++html[data-background="farm"] .login-page{background:linear-gradient(145deg,rgba(3,56,37,.76),rgba(8,99,61,.60)),url('../images/farm_login.jpg') center/cover!important}
++html[data-background="rows"] .login-page{background:linear-gradient(145deg,rgba(3,56,37,.76),rgba(8,99,61,.60)),url('../images/farm_rows.jpg') center/cover!important}
++html[data-background="qat"] .login-page{background:linear-gradient(145deg,rgba(3,56,37,.76),rgba(8,99,61,.60)),url('../images/qat_vip_hero.jpg') center/cover!important}
++html[data-background="close"] .login-page{background:linear-gradient(145deg,rgba(3,56,37,.76),rgba(8,99,61,.60)),url('../images/farm_close.jpg') center/cover!important}
++.access-code-input{letter-spacing:5px;text-align:center;font-size:20px;font-family:Arial,sans-serif;direction:ltr}
++.permission-grid{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px}.user-permissions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.user-permissions span{font-size:9px;background:#edf3ef;padding:4px 7px;border-radius:12px}
++.invoice-filter-bar{grid-template-columns:minmax(140px,1fr) 100px 130px auto auto}.zakat-summary{display:flex;gap:14px;flex-wrap:wrap}.zakat-confirm-amount{font-size:22px;font-weight:800;color:var(--green);margin-bottom:12px}.zakat-paid-card{border-right:4px solid #18864b}
++.settings-preferences-grid{grid-template-columns:repeat(4,minmax(0,1fr))}@media(max-width:760px){.invoice-filter-bar{grid-template-columns:1fr 90px 120px}.invoice-filter-bar .btn{flex:1}.settings-preferences-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){.invoice-filter-bar,.settings-preferences-grid{grid-template-columns:1fr 1fr}}
+diff --git a/wwwroot/js/ui-preferences.js b/wwwroot/js/ui-preferences.js
+index 22311fe..ef457b1 100644
+--- a/wwwroot/js/ui-preferences.js
++++ b/wwwroot/js/ui-preferences.js
+@@ -52,7 +52,9 @@
+         const theme = prefs.theme || "green";
+         const scale = Number(prefs.fontScale || 1);
+         const language = prefs.language === "en" ? "en" : "ar";
++        const background = prefs.background || "none";
+         document.documentElement.dataset.theme = theme;
++        document.documentElement.dataset.background = background;
+         document.documentElement.dataset.language = language;
+         document.documentElement.lang = language;
+         document.documentElement.dir = language === "en" ? "ltr" : "rtl";
