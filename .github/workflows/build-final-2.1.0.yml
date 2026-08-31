@@ -40,6 +40,16 @@ jobs:
           git apply --check --exclude=Components/Pages/Users.razor /tmp/final-2.1.0.patch
           git apply --exclude=Components/Pages/Users.razor /tmp/final-2.1.0.patch
           cp "$GITHUB_WORKSPACE/.github/final-files/Users.razor" Components/Pages/Users.razor
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Components/Pages/Invoices.razor')
+          s = p.read_text(encoding='utf-8')
+          old = 'JS.InvokeAsync<bool>("confirm",$"حذف الفاتورة {number}؟")'
+          new = 'JS.InvokeAsync<bool>("confirm",new object?[] { $"حذف الفاتورة {number}؟" })'
+          if old not in s:
+              raise SystemExit('Expected invoice delete confirmation call was not found.')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+          PY
           test -f QatFarm.Mobile.csproj
           test -f Components/Pages/Users.razor
           test -f Services/DebtSmsService.cs
