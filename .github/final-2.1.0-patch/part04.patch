@@ -1,0 +1,137 @@
+     <option value="@UserRole.Administrator">مدير</option><option value="@UserRole.Accountant">محاسب</option><option value="@UserRole.Employee">موظف</option>
+     </InputSelect></div>
+    </div>
+-   <label class="check"><InputCheckbox @bind-Value="model.IsActive" /> الحساب نشط</label>
++   <div class="permission-grid">
++    <label class="check"><InputCheckbox @bind-Value="model.CanEditInvoices" /> تعديل الفواتير</label>
++    <label class="check"><InputCheckbox @bind-Value="model.CanDeleteInvoices" /> حذف الفواتير</label>
++    <label class="check"><InputCheckbox @bind-Value="model.IsActive" /> الحساب نشط</label>
++   </div>
+    <div class="actions"><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="Reset">جديد</button></div>
+   </EditForm>
+   @if(!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+@@ -28,7 +31,7 @@ else
+  @foreach(var x in users)
+  {
+   <div class="data-card">
+-   <div><strong>@x.FullName</strong><small>@x.Email — @RoleText(x.Role) — @(x.IsActive?"نشط":"موقوف")</small></div>
++   <div class="grow"><strong>@x.FullName</strong><small>@RoleText(x.Role) — @(x.IsActive?"نشط":"موقوف")</small><div class="user-permissions"><span>تعديل: @(x.Role==UserRole.Administrator || x.CanEditInvoices?"نعم":"لا")</span><span>حذف: @(x.Role==UserRole.Administrator || x.CanDeleteInvoices?"نعم":"لا")</span></div></div>
+    <button class="btn small" @onclick="() => Edit(x)">تعديل</button>
+   </div>
+  }
+@@ -39,7 +42,7 @@ else
+  protected override async Task OnInitializedAsync(){if(Session.IsAdmin)await LoadAsync();}
+  private async Task LoadAsync()=>users=await Service.GetUsersAsync();
+  private async Task SaveAsync(){try{await Service.SaveUserAsync(model);ok=true;message="تم الحفظ.";Reset();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+- private void Edit(AppUser x)=>model=new UserEditModel{Id=x.Id,FullName=x.FullName,Email=x.Email,Role=x.Role,IsActive=x.IsActive};
++ private void Edit(AppUser x)=>model=new UserEditModel{Id=x.Id,FullName=x.FullName,Role=x.Role,CanEditInvoices=x.CanEditInvoices,CanDeleteInvoices=x.CanDeleteInvoices,IsActive=x.IsActive};
+  private void Reset()=>model=new UserEditModel{IsActive=true};
+  private static string RoleText(UserRole r)=>r switch{UserRole.Administrator=>"مدير",UserRole.Accountant=>"محاسب",_=>"موظف"};
+ }
+diff --git a/Components/Pages/Zakat.razor b/Components/Pages/Zakat.razor
+index 94128c2..81fd4d6 100644
+--- a/Components/Pages/Zakat.razor
++++ b/Components/Pages/Zakat.razor
+@@ -1,32 +1,54 @@
+ @page "/zakat"
+ @inject QatFarmService Service
+ @inject AppSession Session
++@inject ZakatNotificationService ZakatNotifications
+ 
+-<h1>الزكاة المعلقة</h1>
++<h1>الزكاة</h1>
+ @if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+-<div class="summary-strip"><span>إجمالي الزكاة المعلقة: <b>@rows.Sum(x=>x.Invoice.ZakatAmount).ToString("N2")</b></span></div>
++<div class="summary-strip zakat-summary"><span>المعلقة: <b>@pending.Sum(x=>x.Invoice.ZakatAmount).ToString("N2")</b> ر.ي</span><span>عدد الفواتير: <b>@pending.Count</b></span></div>
++
++<h2 class="section-title">بانتظار الدفع والتأكيد</h2>
+ <div class="card-list">
+-@foreach(var row in rows)
++@foreach(var row in pending)
+ {
+  <div class="data-card">
+-  <div class="grow"><strong>@row.Invoice.InvoiceNumber</strong><small>@row.FarmName — @row.Invoice.InvoiceDate.ToString("yyyy/MM/dd")</small><div class="money-line"><span>الزكاة @row.Invoice.ZakatAmount.ToString("N2")</span></div></div>
+-  @if(Session.CanRecordPayments){<button class="btn small success" @onclick="() => Start(row)">تأكيد الدفع</button>}
++  <div class="grow"><strong>@row.Invoice.InvoiceNumber</strong><small>@row.FarmName — @row.Invoice.InvoiceDate.ToString("yyyy/MM/dd")</small><div class="money-line"><span>الزكاة <b>@row.Invoice.ZakatAmount.ToString("N2")</b> ر.ي</span></div></div>
++  @if(Session.CanRecordPayments){<button class="btn small success" @onclick="() => Start(row)">تأكيد الوصول</button>}
+  </div>
+ }
+ </div>
++@if(pending.Count==0){<div class="empty-state compact">لا توجد زكاة معلقة.</div>}
++
++@if(paid.Count>0)
++{
++ <h2 class="section-title">سجل الزكاة المدفوعة</h2>
++ <div class="card-list">
++ @foreach(var row in paid)
++ {
++  <div class="data-card zakat-paid-card">
++   <div class="grow"><strong>@row.Invoice.InvoiceNumber</strong><small>@row.FarmName — @(row.Invoice.ZakatPaidAt?.ToString("yyyy/MM/dd HH:mm") ?? "-")</small><div class="money-line"><span>@row.Invoice.ZakatAmount.ToString("N2") ر.ي</span><span>المستلم: @(row.Invoice.ZakatRecipientName ?? "-")</span><span>السند: @(row.Invoice.ZakatPaymentReference ?? "-")</span></div></div>
++   <span class="badge success">تم التأكيد</span>
++  </div>
++ }
++ </div>
++}
++
+ @if(selected is not null)
+ {
+  <div class="modal-backdrop"><div class="modal-card">
+-  <h2>تأكيد دفع الزكاة</h2>
++  <h2>تأكيد وصول الزكاة</h2>
++  <div class="zakat-confirm-amount">@selected.Invoice.ZakatAmount.ToString("N2") ر.ي</div>
++  <label>اسم مستلم الزكاة</label><input class="form-control" @bind="recipient" />
+   <label>رقم السند أو المرجع</label><input class="form-control" @bind="reference" />
+-  <div class="actions"><button class="btn success" @onclick="ConfirmAsync">تأكيد</button><button class="btn ghost" @onclick="Close">إلغاء</button></div>
++  <div class="actions"><button class="btn success" @onclick="ConfirmAsync">تأكيد الوصول</button><button class="btn ghost" @onclick="Close">إلغاء</button></div>
+  </div></div>
+ }
+ @code {
+- private List<InvoiceListRow> rows=[]; private InvoiceListRow? selected; private string? reference; private string? message; private bool ok;
+- protected override async Task OnInitializedAsync()=>await LoadAsync();
+- private async Task LoadAsync()=>rows=await Service.GetPendingZakatAsync();
+- private void Start(InvoiceListRow row){selected=row;reference=null;}
+- private void Close(){selected=null;reference=null;}
+- private async Task ConfirmAsync(){if(selected is null)return;try{await Service.ConfirmZakatPaidAsync(selected.Invoice.Id,reference);ok=true;message="تم تأكيد دفع الزكاة.";Close();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
++ private List<InvoiceListRow> pending=[]; private List<InvoiceListRow> paid=[]; private InvoiceListRow? selected;
++ private string? recipient; private string? reference; private string? message; private bool ok;
++ protected override async Task OnInitializedAsync(){await LoadAsync();await ZakatNotifications.RefreshAsync();}
++ private async Task LoadAsync(){pending=await Service.GetPendingZakatAsync();paid=await Service.GetPaidZakatAsync();}
++ private void Start(InvoiceListRow row){selected=row;recipient=null;reference=null;}
++ private void Close(){selected=null;recipient=null;reference=null;}
++ private async Task ConfirmAsync(){if(selected is null)return;try{await Service.ConfirmZakatPaidAsync(selected.Invoice.Id,recipient,reference);ok=true;message="تم تسجيل دفع الزكاة وتأكيد وصولها.";Close();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ }
+diff --git a/Data/MobileDb.cs b/Data/MobileDb.cs
+index e071695..1834683 100644
+--- a/Data/MobileDb.cs
++++ b/Data/MobileDb.cs
+@@ -70,6 +70,33 @@ public sealed class MobileDb
+                 $"CREATE UNIQUE INDEX IF NOT EXISTS \"UX_{table}_SyncKey\" ON \"{table}\"(SyncKey);");
+         }
+ 
++        // ترقية حسابات المستخدمين إلى رمز دخول من 6 أحرف وصلاحيات فواتير مستقلة.
++        var usersExist = await db.ExecuteScalarAsync<int>(
++            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'AppUsers';");
++        if (usersExist > 0)
++        {
++            var userColumns = await db.QueryAsync<SqliteColumnInfo>("PRAGMA table_info(\"AppUsers\");");
++            if (userColumns.All(x => !string.Equals(x.Name, "AccessCodeHash", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"AppUsers\" ADD COLUMN AccessCodeHash TEXT NOT NULL DEFAULT '';");
++            if (userColumns.All(x => !string.Equals(x.Name, "AccessCodeSalt", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"AppUsers\" ADD COLUMN AccessCodeSalt TEXT NOT NULL DEFAULT '';");
++            if (userColumns.All(x => !string.Equals(x.Name, "CanEditInvoices", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"AppUsers\" ADD COLUMN CanEditInvoices INTEGER NOT NULL DEFAULT 0;");
++            if (userColumns.All(x => !string.Equals(x.Name, "CanDeleteInvoices", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"AppUsers\" ADD COLUMN CanDeleteInvoices INTEGER NOT NULL DEFAULT 0;");
++            await db.ExecuteAsync("UPDATE \"AppUsers\" SET CanEditInvoices = 1, CanDeleteInvoices = 1 WHERE Role = 0;");
++        }
++
++        // بيانات تأكيد وصول الزكاة.
++        var invoicesExist = await db.ExecuteScalarAsync<int>(
++            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'SalesInvoices';");
++        if (invoicesExist > 0)
++        {
++            var invoiceColumns = await db.QueryAsync<SqliteColumnInfo>("PRAGMA table_info(\"SalesInvoices\");");
++            if (invoiceColumns.All(x => !string.Equals(x.Name, "ZakatRecipientName", StringComparison.OrdinalIgnoreCase)))
++                await db.ExecuteAsync("ALTER TABLE \"SalesInvoices\" ADD COLUMN ZakatRecipientName TEXT;");
++        }
++
