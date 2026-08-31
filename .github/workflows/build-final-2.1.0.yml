@@ -34,7 +34,7 @@ jobs:
         run: |
           python3 -c "from pathlib import Path; parts=sorted(Path('.github/final-2.1.0-patch').glob('part*.patch')); out=b''.join(p.read_bytes() + (b'' if p.read_bytes().endswith(b'\\n') else b'\\n') for p in parts); Path('/tmp/final-2.1.0.patch').write_bytes(out)"
           echo "Patch SHA256: $(sha256sum /tmp/final-2.1.0.patch)"
-          test "$(sha256sum /tmp/final-2.1.0.patch | awk '{print $1}')" = "ec3a09690f74de6b106115008cb46aab47b4076721378e3badc344778d875a06"
+          test "$(sha256sum /tmp/final-2.1.0.patch | awk '{print $1}')" = "1456073fe8d58d69a18f52428b2d25ddd9060dcc5d968459dce531bd81dcbe4c"
           cd source/QatFarmMobile_Android/QatFarm.Mobile
           git init -q
           git config core.autocrlf false
