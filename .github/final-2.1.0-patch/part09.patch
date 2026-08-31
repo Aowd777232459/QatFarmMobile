@@ -1,0 +1,156 @@
++                await AuditAsync(smsResult.Sent ? "إرسال تفاصيل بيع SMS" : "تعذر إرسال تفاصيل بيع SMS", nameof(SalesInvoice), invoice.Id, null, smsResult.Message);
++            }
++        }
++
++        if (invoice.ZakatStatus == ZakatPaymentStatus.Pending)
++            await _zakatNotifications.RefreshAsync(requestPermission: true);
+ 
+         return invoice.Id;
+     }
+ 
+-    public async Task<List<InvoiceListRow>> GetInvoicesAsync(long? farmId, int year)
++    public async Task<List<InvoiceListRow>> GetInvoicesAsync(long? farmId, int year, int? month = null)
+     {
+         var db = await DbAsync();
+-        var from = new DateTime(year, 1, 1);
+-        var to = from.AddYears(1);
++        var from = month.HasValue ? new DateTime(year, Math.Clamp(month.Value, 1, 12), 1) : new DateTime(year, 1, 1);
++        var to = month.HasValue ? from.AddMonths(1) : from.AddYears(1);
+         var rows = await db.Table<SalesInvoice>()
+             .Where(x => !x.IsDeleted && x.InvoiceDate >= from && x.InvoiceDate < to)
+             .OrderByDescending(x => x.InvoiceDate).ToListAsync();
+@@ -756,18 +806,50 @@ public sealed class QatFarmService
+         await AuditAsync("إلغاء فاتورة", nameof(SalesInvoice), id, old, invoice);
+     }
+ 
+-    public async Task ConfirmZakatPaidAsync(long id, string? reference)
++    public async Task DeleteInvoiceAsync(long id)
++    {
++        EnsureCanDeleteInvoices();
++        var db = await DbAsync();
++        var invoice = await db.FindAsync<SalesInvoice>(id) ?? throw new InvalidOperationException("الفاتورة غير موجودة.");
++        var linkedPayments = await db.Table<CustomerPayment>()
++            .Where(x => !x.IsDeleted && x.SalesInvoiceId == id).CountAsync();
++        if (linkedPayments > 0)
++            throw new InvalidOperationException("لا يمكن حذف فاتورة مرتبطة بدفعات مسجلة. راجع دفعات العميل أولاً.");
++        var old = JsonSerializer.Serialize(invoice);
++        invoice.IsDeleted = true;
++        invoice.Status = InvoiceStatus.Cancelled;
++        invoice.ZakatStatus = ZakatPaymentStatus.NotApplicable;
++        invoice.UpdatedAt = DateTime.Now;
++        await db.UpdateAsync(invoice);
++        foreach (var item in await db.Table<SalesInvoiceItem>().Where(x => x.InvoiceId == id && !x.IsDeleted).ToListAsync())
++        { item.IsDeleted = true; item.UpdatedAt = DateTime.Now; await db.UpdateAsync(item); }
++        foreach (var expense in await db.Table<InvoiceExpense>().Where(x => x.InvoiceId == id && !x.IsDeleted).ToListAsync())
++        { expense.IsDeleted = true; expense.UpdatedAt = DateTime.Now; await db.UpdateAsync(expense); }
++        await AuditAsync("حذف فاتورة", nameof(SalesInvoice), id, old, null);
++        if (invoice.CustomerId.HasValue)
++        {
++            var customer = await db.FindAsync<Customer>(invoice.CustomerId.Value);
++            if (customer is not null) await ResetCreditAlertIfBelowLimitAsync(db, customer);
++        }
++        await _zakatNotifications.RefreshAsync(requestPermission: false);
++    }
++
++    public async Task ConfirmZakatPaidAsync(long id, string? recipientName, string? reference)
+     {
+         if (!_session.CanRecordPayments) throw new InvalidOperationException("تأكيد الزكاة متاح للمدير أو المحاسب.");
++        if (string.IsNullOrWhiteSpace(recipientName)) throw new InvalidOperationException("اسم مستلم الزكاة مطلوب.");
++        if (string.IsNullOrWhiteSpace(reference)) throw new InvalidOperationException("رقم السند أو المرجع مطلوب.");
+         var db = await DbAsync();
+         var invoice = await db.FindAsync<SalesInvoice>(id)
+             ?? throw new InvalidOperationException("الفاتورة غير موجودة.");
+         invoice.ZakatStatus = ZakatPaymentStatus.Paid;
+         invoice.ZakatPaidAt = DateTime.Now;
+-        invoice.ZakatPaymentReference = reference;
++        invoice.ZakatRecipientName = recipientName.Trim();
++        invoice.ZakatPaymentReference = reference.Trim();
+         invoice.UpdatedAt = DateTime.Now;
+         await db.UpdateAsync(invoice);
+-        await AuditAsync("تأكيد دفع الزكاة", nameof(SalesInvoice), id, null, invoice);
++        await AuditAsync("تأكيد وصول الزكاة", nameof(SalesInvoice), id, null, invoice);
++        await _zakatNotifications.RefreshAsync(requestPermission: false);
+     }
+ 
+     public async Task<List<InvoiceListRow>> GetPendingZakatAsync()
+@@ -790,6 +872,22 @@ public sealed class QatFarmService
+         }).ToList();
+     }
+ 
++    public async Task<List<InvoiceListRow>> GetPaidZakatAsync(int take = 100)
++    {
++        var db = await DbAsync();
++        var invoices = await db.Table<SalesInvoice>()
++            .Where(x => !x.IsDeleted && x.Status == InvoiceStatus.Posted &&
++                        x.ZakatStatus == ZakatPaymentStatus.Paid && x.ZakatAmount > 0)
++            .OrderByDescending(x => x.ZakatPaidAt).Take(take).ToListAsync();
++        var farms = (await GetFarmsAsync()).ToDictionary(x => x.Id, x => x.Name);
++        var customers = (await db.Table<Customer>().Where(x => !x.IsDeleted).ToListAsync()).ToDictionary(x => x.Id, x => x.Name);
++        return invoices.Select(x => new InvoiceListRow
++        {
++            Invoice = x, FarmName = farms.GetValueOrDefault(x.FarmId, "غير معروف"),
++            CustomerName = x.CustomerId.HasValue ? customers.GetValueOrDefault(x.CustomerId.Value, x.BuyerName ?? "نقدي") : x.BuyerName ?? "نقدي"
++        }).ToList();
++    }
++
+     public async Task<DashboardSummary> GetDashboardAsync()
+     {
+         var db = await DbAsync();
+@@ -1072,32 +1170,38 @@ public sealed class QatFarmService
+     public async Task SaveUserAsync(UserEditModel model)
+     {
+         EnsureAdmin();
+-        if (string.IsNullOrWhiteSpace(model.FullName) || string.IsNullOrWhiteSpace(model.Email))
+-            throw new InvalidOperationException("الاسم والبريد مطلوبان.");
++        if (string.IsNullOrWhiteSpace(model.FullName)) throw new InvalidOperationException("اسم الحساب مطلوب.");
+         var db = await DbAsync();
+-        var email = model.Email.Trim().ToLowerInvariant();
++        var code = string.IsNullOrWhiteSpace(model.AccessCode) ? null : AppSession.NormalizeAccessCode(model.AccessCode);
++        if (model.Id == 0 && code is null) throw new InvalidOperationException("رمز الدخول يجب أن يتكون من 6 أحرف بالضبط.");
++        if (!string.IsNullOrWhiteSpace(model.AccessCode) && code is null) throw new InvalidOperationException("رمز الدخول يجب أن يتكون من 6 أحرف بالضبط.");
++
++        if (code is not null)
++        {
++            var others = await db.Table<AppUser>().Where(x => !x.IsDeleted && x.Id != model.Id).ToListAsync();
++            if (others.Any(x => !string.IsNullOrWhiteSpace(x.AccessCodeHash) && PasswordHasher.Verify(code, x.AccessCodeHash, x.AccessCodeSalt)))
++                throw new InvalidOperationException("رمز الدخول مستخدم في حساب آخر. اختر رمزًا مختلفًا.");
++        }
+ 
+         if (model.Id == 0)
+         {
+-            if (string.IsNullOrWhiteSpace(model.Password) || model.Password.Length < 8)
+-                throw new InvalidOperationException("كلمة المرور يجب ألا تقل عن 8 أحرف.");
+-            if (await db.Table<AppUser>().Where(x => x.Email == email && !x.IsDeleted).CountAsync() > 0)
+-                throw new InvalidOperationException("البريد مستخدم مسبقًا.");
+-            var (hash, salt) = PasswordHasher.HashPassword(model.Password);
++            var (hash, salt) = PasswordHasher.HashPassword(code!);
+             var user = new AppUser
+             {
+-                FullName = model.FullName.Trim(), Email = email,
+-                PasswordHash = hash, PasswordSalt = salt,
+-                Role = model.Role, IsActive = model.IsActive
++                FullName = model.FullName.Trim(),
++                Email = $"user-{Guid.NewGuid():N}@local.awad",
++                PasswordHash = hash, PasswordSalt = salt, AccessCodeHash = hash, AccessCodeSalt = salt,
++                Role = model.Role,
++                CanEditInvoices = model.Role == UserRole.Administrator || model.CanEditInvoices,
++                CanDeleteInvoices = model.Role == UserRole.Administrator || model.CanDeleteInvoices,
++                IsActive = model.IsActive
+             };
+             await db.InsertAsync(user);
+-            await AuditAsync("إنشاء مستخدم", nameof(AppUser), user.Id, null, user);
++            await AuditAsync("إنشاء مستخدم", nameof(AppUser), user.Id, null, new { user.FullName, user.Role, user.CanEditInvoices, user.CanDeleteInvoices, user.IsActive });
+         }
+         else
+         {
+             var user = await db.FindAsync<AppUser>(model.Id) ?? throw new InvalidOperationException("المستخدم غير موجود.");
+-            if (await db.Table<AppUser>().Where(x => x.Id != user.Id && x.Email == email && !x.IsDeleted).CountAsync() > 0)
+-                throw new InvalidOperationException("البريد مستخدم مسبقًا.");
+             if (_session.CurrentUser?.Id == user.Id && !model.IsActive)
+                 throw new InvalidOperationException("لا يمكنك إيقاف حسابك الحالي.");
+             var removesAdministrator = user.Role == UserRole.Administrator &&
+@@ -1109,19 +1213,21 @@ public sealed class QatFarmService
+                     .CountAsync();
+                 if (otherAdmins == 0) throw new InvalidOperationException("لا يمكن إيقاف أو تغيير دور آخر مدير نشط.");
+             }
+-            var oldUser = JsonSerializer.Serialize(user);
