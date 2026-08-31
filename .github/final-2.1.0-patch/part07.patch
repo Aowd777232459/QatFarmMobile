@@ -1,0 +1,113 @@
+-        row.InvoiceNumber = d.InvoiceNumber; row.FarmId = farm.Id; row.CustomerId = customer?.Id; row.InvoiceDate = d.InvoiceDate; row.PaymentDueDate = customer is null ? null : d.PaymentDueDate; row.BuyerName = customer?.Name ?? d.BuyerName; row.BuyerPhone = customer?.Phone ?? d.BuyerPhone; row.GrossAmount = d.GrossAmount; row.ZakatPercent = d.ZakatPercent; row.ZakatAmount = d.ZakatAmount; row.ZakatStatus = d.ZakatStatus; row.ZakatPaidAt = d.ZakatPaidAt; row.ZakatPaymentReference = d.ZakatPaymentReference; row.TotalExpenses = d.TotalExpenses; row.NetAmount = d.NetAmount; row.AmountPaid = customer is null ? d.GrossAmount : d.AmountPaid; row.AmountDue = customer is null ? 0 : d.AmountDue; row.PaymentMethod = customer is null ? PaymentMethod.Cash : d.PaymentMethod; row.PaymentStatus = customer is null ? PaymentStatus.Paid : d.PaymentStatus; row.Status = d.Status; row.Notes = d.Notes;
++        row.InvoiceNumber = d.InvoiceNumber; row.FarmId = farm.Id; row.CustomerId = customer?.Id; row.InvoiceDate = d.InvoiceDate; row.PaymentDueDate = customer is null ? null : d.PaymentDueDate; row.BuyerName = customer?.Name ?? d.BuyerName; row.BuyerPhone = customer?.Phone ?? d.BuyerPhone; row.GrossAmount = d.GrossAmount; row.ZakatPercent = d.ZakatPercent; row.ZakatAmount = d.ZakatAmount; row.ZakatStatus = d.ZakatStatus; row.ZakatPaidAt = d.ZakatPaidAt; row.ZakatPaymentReference = d.ZakatPaymentReference; if (d.ZakatRecipientName is not null) row.ZakatRecipientName = d.ZakatRecipientName; row.TotalExpenses = d.TotalExpenses; row.NetAmount = d.NetAmount; row.AmountPaid = customer is null ? d.GrossAmount : d.AmountPaid; row.AmountDue = customer is null ? 0 : d.AmountDue; row.PaymentMethod = customer is null ? PaymentMethod.Cash : d.PaymentMethod; row.PaymentStatus = customer is null ? PaymentStatus.Paid : d.PaymentStatus; row.Status = d.Status; row.Notes = d.Notes;
+         await UpsertAsync(db, row);
+     }
+ 
+@@ -361,11 +361,11 @@ public sealed class LocalSyncService : IDisposable
+     public void Dispose() { Connectivity.Current.ConnectivityChanged -= ConnectivityChanged; _stop.Cancel(); _http.Dispose(); _stop.Dispose(); _gate.Dispose(); }
+ 
+     private sealed record FarmData(string Name, string? OwnerName, string? Location, string? Phone, string? Notes, bool IsActive);
+-    private sealed record CustomerData(string Name, string? Phone, string? Region, string? Address, decimal OpeningBalance, decimal CreditLimit, string? Notes, bool IsActive);
++    private sealed record CustomerData(string Name, string? Phone, string? SellerPhone, string? Region, string? Address, decimal OpeningBalance, decimal CreditLimit, bool? DebtAlertEnabled, string? Notes, bool IsActive);
+     private sealed record CreditorData(string Name, string? Phone, string? Address, string? Notes, bool IsActive);
+     private sealed record NamedData(string Name, bool IsActive);
+     private sealed record CultivationData(string FarmKey, string ExpenseTypeKey, decimal Amount, DateTime ExpenseDate, CultivationExpensePaymentType PaymentType, string? CreditorKey, decimal PaidAmount, DateTime? DueDate, CultivationDebtStatus DebtStatus, string? Notes, string ReceiptNumber);
+-    private sealed record InvoiceData(string InvoiceNumber, string FarmKey, string? CustomerKey, DateTime InvoiceDate, DateTime? PaymentDueDate, string? BuyerName, string? BuyerPhone, decimal GrossAmount, decimal ZakatPercent, decimal ZakatAmount, ZakatPaymentStatus ZakatStatus, DateTime? ZakatPaidAt, string? ZakatPaymentReference, decimal TotalExpenses, decimal NetAmount, decimal AmountPaid, decimal AmountDue, PaymentMethod PaymentMethod, PaymentStatus PaymentStatus, InvoiceStatus Status, string? Notes);
++    private sealed record InvoiceData(string InvoiceNumber, string FarmKey, string? CustomerKey, DateTime InvoiceDate, DateTime? PaymentDueDate, string? BuyerName, string? BuyerPhone, decimal GrossAmount, decimal ZakatPercent, decimal ZakatAmount, ZakatPaymentStatus ZakatStatus, DateTime? ZakatPaidAt, string? ZakatPaymentReference, string? ZakatRecipientName, decimal TotalExpenses, decimal NetAmount, decimal AmountPaid, decimal AmountDue, PaymentMethod PaymentMethod, PaymentStatus PaymentStatus, InvoiceStatus Status, string? Notes);
+     private sealed record DebtPaymentData(string CultivationExpenseKey, string CreditorKey, decimal Amount, DateTime PaymentDate, PaymentMethod PaymentMethod, string? ReferenceNumber, string? Notes);
+     private sealed record InvoiceItemData(string InvoiceKey, string QatTypeKey, int Quantity, decimal UnitPrice, decimal TotalPrice);
+     private sealed record InvoiceExpenseData(string InvoiceKey, string ExpenseTypeKey, decimal Amount, string? Notes);
+diff --git a/Services/MobilePdfService.cs b/Services/MobilePdfService.cs
+index 46d1e61..3055593 100644
+--- a/Services/MobilePdfService.cs
++++ b/Services/MobilePdfService.cs
+@@ -62,11 +62,44 @@ public sealed class MobilePdfService
+ #endif
+     }
+ 
++    public async Task<string> CreateMonthlyInvoicesPdfAsync(long? farmId, int year, int month)
++    {
++#if ANDROID
++        if (month < 1 || month > 12) throw new InvalidOperationException("الشهر غير صحيح.");
++        var rows = await _service.GetInvoicesAsync(farmId, year, month);
++        var posted = rows.Where(x => x.Invoice.Status == InvoiceStatus.Posted).ToList();
++        var farmName = farmId.HasValue && farmId.Value > 0
++            ? rows.FirstOrDefault()?.FarmName ?? "المزرعة المحددة"
++            : "كل المزارع";
++        var monthName = new DateTime(year, month, 1).ToString("yyyy/MM");
++        var path = Path.Combine(FileSystem.CacheDirectory, $"Invoices-Month-{farmId ?? 0}-{year}-{month:00}.pdf");
++        using var document = new AndroidPdfDocument();
++        var writer = new PdfWriter(document, $"فواتير شهر {monthName}", farmName);
++        writer.Title($"تقرير المبيعات الشهري — {farmName} — {monthName}");
++        writer.Section("ملخص الشهر");
++        writer.KeyValue("عدد الفواتير", posted.Count.ToString("N0"));
++        writer.KeyValue("إجمالي المبيعات", posted.Sum(x => x.Invoice.GrossAmount).ToString("N2"));
++        writer.KeyValue("المدفوع", posted.Sum(x => x.Invoice.AmountPaid).ToString("N2"));
++        writer.KeyValue("المتبقي", posted.Sum(x => x.Invoice.AmountDue).ToString("N2"));
++        writer.KeyValue("الزكاة", posted.Sum(x => x.Invoice.ZakatAmount).ToString("N2"));
++        foreach (var row in rows.OrderBy(x => x.Invoice.InvoiceDate).ThenBy(x => x.Invoice.Id))
++        {
++            writer.PageBreak();
++            var details = await _service.GetInvoiceDetailsAsync(row.Invoice.Id);
++            WriteInvoiceDetails(writer, details);
++        }
++        writer.Finish(path);
++        return path;
++#else
++        throw new PlatformNotSupportedException();
++#endif
++    }
++
+     public async Task<string> CreateExecutiveAccountingPdfAsync(long? farmId, int year)
+     {
+ #if ANDROID
+         var summary = await _service.GetAccountingCenterAsync(year, farmId);
+-        var path = Path.Combine(FileSystem.CacheDirectory, $"Accounting-VIP-{farmId ?? 0}-{year}.pdf");
++        var path = Path.Combine(FileSystem.CacheDirectory, $"Accounting-{farmId ?? 0}-{year}.pdf");
+         using var document = new AndroidPdfDocument();
+         var writer = new PdfWriter(document, $"المركز المالي التنفيذي {year}", summary.FarmName);
+         writer.Title($"التقرير المحاسبي التنفيذي — {summary.FarmName}");
+@@ -150,6 +183,12 @@ public sealed class MobilePdfService
+         writer.KeyValue("إجمالي المبيعات", details.Invoice.GrossAmount.ToString("N2"));
+         writer.KeyValue("الزكاة", details.Invoice.ZakatAmount.ToString("N2"));
+         writer.KeyValue("حالة الزكاة", ZakatStatusText(details.Invoice.ZakatStatus));
++        if (details.Invoice.ZakatStatus == ZakatPaymentStatus.Paid)
++        {
++            writer.KeyValue("مستلم الزكاة", details.Invoice.ZakatRecipientName ?? "-");
++            writer.KeyValue("مرجع الزكاة", details.Invoice.ZakatPaymentReference ?? "-");
++            writer.KeyValue("تاريخ دفع الزكاة", details.Invoice.ZakatPaidAt?.ToString("yyyy/MM/dd HH:mm") ?? "-");
++        }
+         writer.KeyValue("المصروفات", details.Invoice.TotalExpenses.ToString("N2"));
+         writer.KeyValue("الصافي", details.Invoice.NetAmount.ToString("N2"));
+         writer.KeyValue("المدفوع", details.Invoice.AmountPaid.ToString("N2"));
+diff --git a/Services/QatFarmService.cs b/Services/QatFarmService.cs
+index f722a68..3a9f261 100644
+--- a/Services/QatFarmService.cs
++++ b/Services/QatFarmService.cs
+@@ -10,12 +10,14 @@ public sealed class QatFarmService
+     private readonly MobileDb _db;
+     private readonly AppSession _session;
+     private readonly DebtSmsService _debtSms;
++    private readonly ZakatNotificationService _zakatNotifications;
+ 
+-    public QatFarmService(MobileDb db, AppSession session, DebtSmsService debtSms)
++    public QatFarmService(MobileDb db, AppSession session, DebtSmsService debtSms, ZakatNotificationService zakatNotifications)
+     {
+         _db = db;
+         _session = session;
+         _debtSms = debtSms;
++        _zakatNotifications = zakatNotifications;
+     }
+ 
+     private async Task<SQLiteAsyncConnection> DbAsync() => await _db.GetAsync();
+@@ -25,6 +27,16 @@ public sealed class QatFarmService
+         if (!_session.IsAdmin) throw new InvalidOperationException("هذه العملية متاحة للمدير فقط.");
+     }
+ 
++    private void EnsureCanEditInvoices()
++    {
++        if (!_session.CanEditInvoices) throw new InvalidOperationException("لا توجد صلاحية لتعديل الفواتير لهذا الحساب.");
++    }
++
++    private void EnsureCanDeleteInvoices()
++    {
