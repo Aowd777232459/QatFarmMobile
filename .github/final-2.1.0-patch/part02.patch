@@ -1,0 +1,150 @@
+-   await Pdf.SharePdfAsync(path, "التقرير المحاسبي التنفيذي VIP");
++   await Pdf.SharePdfAsync(path, "التقرير المحاسبي");
+   }
+   catch (Exception ex) { error = ex.Message; }
+   finally { exporting = false; }
+diff --git a/Components/Pages/Catalogs.razor b/Components/Pages/Catalogs.razor
+index 9137e90..bbd9147 100644
+--- a/Components/Pages/Catalogs.razor
++++ b/Components/Pages/Catalogs.razor
+@@ -7,7 +7,7 @@
+ @if (!Session.IsAdmin)
+ {
+  <div class="permission-lock-card">
+-  <span>🔒</span><div><strong>هذه العملية للمدير فقط</strong><p>يمكنك استخدام الأنواع المعتمدة أثناء الإضافة، بينما التعديل والتفعيل من صلاحيات المدير.</p></div>
++  <span>🔒</span><div><strong>هذه العملية للمدير فقط</strong></div>
+  </div>
+ }
+ else
+@@ -15,7 +15,7 @@ else
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
+  <div class="catalog-grid">
+   <section class="finance-panel catalog-panel">
+-   <div class="finance-section-head"><div><span>أنواع القات</span><strong>تظهر في قائمة أصناف الفاتورة</strong></div></div>
++   <div class="finance-section-head"><div><span>أنواع القات</span></div></div>
+    <EditForm Model="qatModel" OnValidSubmit="SaveQatAsync">
+     <div class="catalog-editor"><InputText class="form-control" @bind-Value="qatModel.Name" placeholder="اسم نوع القات" /><label class="check"><InputCheckbox @bind-Value="qatModel.IsActive" /> فعال</label><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="ResetQat">جديد</button></div>
+    </EditForm>
+@@ -28,7 +28,7 @@ else
+   </section>
+ 
+   <section class="finance-panel catalog-panel">
+-   <div class="finance-section-head"><div><span>مصروفات الفاتورة</span><strong>تظهر داخل فاتورة البيع</strong></div></div>
++   <div class="finance-section-head"><div><span>مصروفات الفاتورة</span></div></div>
+    <EditForm Model="dailyModel" OnValidSubmit="SaveDailyAsync">
+     <div class="catalog-editor"><InputText class="form-control" @bind-Value="dailyModel.Name" placeholder="اسم نوع المصروف" /><label class="check"><InputCheckbox @bind-Value="dailyModel.IsActive" /> فعال</label><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="ResetDaily">جديد</button></div>
+    </EditForm>
+@@ -41,7 +41,7 @@ else
+   </section>
+ 
+   <section class="finance-panel catalog-panel">
+-   <div class="finance-section-head"><div><span>خسائر التربية</span><strong>تظهر عند تسجيل مصروفات المزرعة</strong></div></div>
++   <div class="finance-section-head"><div><span>خسائر التربية</span></div></div>
+    <EditForm Model="cultivationModel" OnValidSubmit="SaveCultivationAsync">
+     <div class="catalog-editor"><InputText class="form-control" @bind-Value="cultivationModel.Name" placeholder="اسم نوع خسارة التربية" /><label class="check"><InputCheckbox @bind-Value="cultivationModel.IsActive" /> فعال</label><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="ResetCultivation">جديد</button></div>
+    </EditForm>
+diff --git a/Components/Pages/Home.razor b/Components/Pages/Home.razor
+index cf4d760..a474259 100644
+--- a/Components/Pages/Home.razor
++++ b/Components/Pages/Home.razor
+@@ -3,16 +3,14 @@
+ @inject AppSession Session
+ 
+ <div class="page-head accounting-page-head">
+- <div><span class="vip-kicker">إدارة مالية وتشغيلية</span><h1>لوحة التحكم VIP</h1></div>
++ <div><h1>لوحة التحكم</h1></div>
+  <a class="btn primary compact" href="/accounting">المركز المالي</a>
+ </div>
+ 
+-<div class="role-scope-bar"><strong>@RoleText()</strong><span>@RoleDescription()</span></div>
+-
+ <section class="home-qat-hero">
+  <img src="images/qat_vip_hero.jpg" alt="مزرعة قات ومنتج زراعي" />
+  <div class="home-qat-shade"></div>
+- <div class="home-qat-copy"><span>AWAD SOFT</span><h2>نظام زراعي عواد سوفت</h2><p>إدارة المزرعة والحسابات والديون والربحية من مكان واحد</p></div>
++ <div class="home-qat-copy"><span>AWAD SOFT</span><h2>نظام زراعي عواد سوفت</h2></div>
+  <div class="home-qat-watermark"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
+ </section>
+ 
+@@ -67,11 +65,4 @@ else
+   finally { loading = false; }
+  }
+  private static string Money(decimal value) => $"{value:N2} ر.ي";
+- private string RoleText() => Session.CurrentUser?.Role switch { UserRole.Administrator => "صلاحيات المدير", UserRole.Accountant => "صلاحيات المحاسب", _ => "صلاحيات الموظف" };
+- private string RoleDescription() => Session.CurrentUser?.Role switch
+- {
+-  UserRole.Administrator => "إضافة وتعديل وحذف واعتماد كامل",
+-  UserRole.Accountant => "إضافة وتحصيل وسداد ومراجعة التقارير",
+-  _ => "إضافة العمليات فقط · التعديل والحذف للمدير"
+- };
+ }
+diff --git a/Components/Pages/Invoices.razor b/Components/Pages/Invoices.razor
+index 56d7c87..4cb58f0 100644
+--- a/Components/Pages/Invoices.razor
++++ b/Components/Pages/Invoices.razor
+@@ -3,19 +3,25 @@
+ @inject MobilePdfService Pdf
+ @inject AppSession Session
+ @inject NavigationManager Nav
++@inject Microsoft.JSInterop.IJSRuntime JS
+ 
+ <div class="invoice-page-head">
+  <div><h1>الفواتير</h1></div>
+  <button class="btn primary" @onclick="NewInvoice">＋ فاتورة جديدة</button>
+ </div>
+ 
+-<div class="filter-bar">
++<div class="filter-bar invoice-filter-bar">
+  <InputSelect class="form-control" @bind-Value="farmFilter">
+   <option value="0">كل المزارع</option>
+   @foreach(var f in farms){<option value="@f.Id">@f.Name</option>}
+  </InputSelect>
+  <input class="form-control" type="number" @bind="year" aria-label="السنة" />
++ <InputSelect class="form-control" @bind-Value="month">
++  <option value="0">كل السنة</option>
++  @for(var m=1;m<=12;m++){<option value="@m">@MonthName(m)</option>}
++ </InputSelect>
+  <button class="btn" @onclick="LoadAsync">عرض</button>
++ <button class="btn primary" @onclick="PrintMonthAsync" disabled="@(month==0 || exportingMonth)">@(exportingMonth?"جارٍ التجهيز...":"PDF الشهر")</button>
+ </div>
+ 
+ @if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+@@ -44,29 +50,30 @@
+   </div>
+   <div class="invoice-register-actions">
+    <button class="btn small" @onclick="() => PrintAsync(row.Invoice.Id)">PDF</button>
+-   @if(Session.IsAdmin && row.Invoice.Status!=InvoiceStatus.Cancelled)
++   @if(row.Invoice.Status!=InvoiceStatus.Cancelled && Session.CanEditInvoices)
+    {
+-   <button class="btn small" @onclick="() => EditInvoice(row.Invoice.Id)">تعديل</button>
+-   <button class="btn small danger" @onclick="() => CancelAsync(row.Invoice.Id)">إلغاء الفاتورة</button>
++    <button class="btn small" @onclick="() => EditInvoice(row.Invoice.Id)">تعديل</button>
+    }
+-   else if(row.Invoice.Status!=InvoiceStatus.Cancelled)
++   @if(Session.CanDeleteInvoices)
+    {
+-    <button class="btn small locked-btn" disabled>🔒 تعديل المدير</button>
+-    <button class="btn small locked-btn" disabled>🔒 إلغاء المدير</button>
++    <button class="btn small danger" @onclick="() => DeleteAsync(row.Invoice.Id, row.Invoice.InvoiceNumber)">حذف</button>
+    }
+   </div>
+  </article>
+ }
+ </div>
+-@if(rows.Count==0){<div class="empty-state">لا توجد فواتير لهذه المزرعة والسنة.</div>}
++@if(rows.Count==0){<div class="empty-state">لا توجد فواتير للفترة المحددة.</div>}
+ 
+ @code {
+  private List<Farm> farms=[]; private List<InvoiceListRow> rows=[];
+- private long farmFilter; private int year=DateTime.Today.Year; private string? message; private bool ok;
++ private long farmFilter; private int year=DateTime.Today.Year; private int month=DateTime.Today.Month;
++ private string? message; private bool ok; private bool exportingMonth;
+  protected override async Task OnInitializedAsync(){farms=await Service.GetFarmsAsync(true);await LoadAsync();}
+  private void NewInvoice()=>Nav.NavigateTo("/invoice/new");
+  private void EditInvoice(long id)=>Nav.NavigateTo($"/invoice/{id}");
+- private async Task LoadAsync()=>rows=await Service.GetInvoicesAsync(farmFilter==0?null:farmFilter,year);
+- private async Task PrintAsync(long id){try{var path=await Pdf.CreateInvoicePdfAsync(id);await Pdf.SharePdfAsync(path,"مشاركة الفاتورة");ok=true;message="تم تجهيز الفاتورة للمشاركة.";}catch(Exception ex){ok=false;message=ex.Message;}}
+- private async Task CancelAsync(long id){try{await Service.CancelInvoiceAsync(id);await LoadAsync();ok=true;message="تم إلغاء الفاتورة.";}catch(Exception ex){ok=false;message=ex.Message;}}
++ private async Task LoadAsync()=>rows=await Service.GetInvoicesAsync(farmFilter==0?null:farmFilter,year,month==0?null:month);
++ private async Task PrintAsync(long id){try{var path=await Pdf.CreateInvoicePdfAsync(id);await Pdf.SharePdfAsync(path,"مشاركة الفاتورة");ok=true;message="تم تجهيز الفاتورة.";}catch(Exception ex){ok=false;message=ex.Message;}}
++ private async Task PrintMonthAsync(){if(month==0)return;exportingMonth=true;try{var path=await Pdf.CreateMonthlyInvoicesPdfAsync(farmFilter==0?null:farmFilter,year,month);await Pdf.SharePdfAsync(path,$"فواتير {year}/{month:00}");ok=true;message="تم تجهيز تقرير الشهر بكل تفاصيل الفواتير والأصناف.";}catch(Exception ex){ok=false;message=ex.Message;}finally{exportingMonth=false;}}
