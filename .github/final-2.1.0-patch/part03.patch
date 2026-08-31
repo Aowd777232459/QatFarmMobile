@@ -1,0 +1,125 @@
++ private async Task DeleteAsync(long id,string number){try{if(!await JS.InvokeAsync<bool>("confirm",$"حذف الفاتورة {number}؟"))return;await Service.DeleteInvoiceAsync(id);await LoadAsync();ok=true;message="تم حذف الفاتورة.";}catch(Exception ex){ok=false;message=ex.Message;}}
++ private static string MonthName(int m)=>new[]{"","يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"}[m];
+ }
+diff --git a/Components/Pages/More.razor b/Components/Pages/More.razor
+index a3486c4..efe84f2 100644
+--- a/Components/Pages/More.razor
++++ b/Components/Pages/More.razor
+@@ -2,7 +2,7 @@
+ @inject AppSession Session
+ <h1>المزيد</h1>
+ <div class="menu-grid">
+- <a class="vip-menu-link" href="/accounting"><span>المركز المالي VIP</span><small>ربحية · سيولة · مقارنة المزارع</small></a>
++ <a class="vip-menu-link" href="/accounting"><span>المركز المالي</span></a>
+  <a href="/invoices"><span>الفواتير</span></a>
+  <a href="/cultivation"><span>خسائر التربية</span></a>
+  <a href="/farms"><span>المزارع</span></a>
+diff --git a/Components/Pages/Privacy.razor b/Components/Pages/Privacy.razor
+index 568671e..adec953 100644
+--- a/Components/Pages/Privacy.razor
++++ b/Components/Pages/Privacy.razor
+@@ -22,5 +22,5 @@
+ <div class="panel">
+     <h2>الأمان والاحتفاظ والحذف</h2>
+     <p>تظل البيانات على الجهاز إلى أن يقوم المستخدم بحذفها أو استبدالها أو إزالة التطبيق، مع مراعاة أي نسخ احتياطية أنشأها المستخدم بنفسه خارج التطبيق. كلمات المرور المحلية لا تُحفظ كنص صريح داخل قاعدة البيانات.</p>
+-    <p>للاستفسارات المتعلقة بالخصوصية، يمكن التواصل مع AWAD SOFT من خلال بيانات اتصال المطور المنشورة في صفحة التطبيق على Google Play.</p>
++    <p>للاستفسارات المتعلقة بالخصوصية، يمكن التواصل مع AWAD SOFT من خلال بيانات اتصال المطور.</p>
+ </div>
+diff --git a/Components/Pages/Settings.razor b/Components/Pages/Settings.razor
+index 32a4a84..6a003d3 100644
+--- a/Components/Pages/Settings.razor
++++ b/Components/Pages/Settings.razor
+@@ -7,9 +7,10 @@
+ @implements IDisposable
+ <h1>الإعدادات والنسخ الاحتياطي</h1>
+ <div class="panel">
+- <h2>المظهر وحجم الخط واللغة</h2>
+- <div class="preferences-grid">
+-  <div><label>المظهر</label><select class="form-control" @bind="theme"><option value="green">الهوية الخضراء</option><option value="light">الوضع الفاتح</option><option value="dark">الوضع الداكن</option><option value="gold">الهوية الذهبية</option></select></div>
++ <h2>المظهر</h2>
++ <div class="preferences-grid settings-preferences-grid">
++  <div><label>الألوان</label><select class="form-control" @bind="theme"><option value="green">الخضراء</option><option value="light">الفاتح</option><option value="dark">الداكن</option><option value="gold">الذهبية</option></select></div>
++  <div><label>الخلفية</label><select class="form-control" @bind="background"><option value="none">بدون صورة</option><option value="farm">المزرعة</option><option value="rows">صفوف المزرعة</option><option value="qat">القات</option><option value="close">خلفية هادئة</option></select></div>
+   <div><label>حجم الخط</label><select class="form-control" @bind="fontScale"><option value="0.9">صغير</option><option value="1">متوسط</option><option value="1.12">كبير</option><option value="1.22">كبير جدًا</option></select></div>
+   <div><label>اللغة</label><select class="form-control" @bind="language"><option value="ar">العربية</option><option value="en">الإنجليزية</option></select></div>
+  </div>
+@@ -17,9 +18,8 @@
+ </div>
+ <div class="panel">
+  <h2>مزامنة Wi-Fi مع الكمبيوتر</h2>
+- <p>من إعدادات الكمبيوتر انسخ العنوان ورمز الربط. بعد الحفظ تتم المزامنة تلقائيًا عندما يكون الجهازان على الشبكة نفسها.</p>
+  <div class="form-grid">
+-  <div><label>عنوان الكمبيوتر</label><input class="form-control" @bind="serverUrl" placeholder="مثال: 192.168.1.5" inputmode="url" /></div>
++  <div><label>عنوان الكمبيوتر</label><input class="form-control" @bind="serverUrl" placeholder="192.168.1.5" inputmode="url" /></div>
+   <div><label>رمز الربط</label><input class="form-control" @bind="pairingKey" placeholder="AWAD-XXXXXXXXXXXX" autocomplete="off" /></div>
+  </div>
+  <label class="check"><input type="checkbox" @bind="autoSync" /> مزامنة تلقائية</label>
+@@ -31,7 +31,6 @@
+ </div>
+ <div class="panel">
+  <h2>نسخة احتياطية محلية</h2>
+- @if (!Session.IsAdmin) { <div class="permission-inline">🔒 إنشاء النسخ واستعادتها من صلاحيات المدير فقط.</div> }
+  <div class="actions">
+   <button class="btn primary @(Session.IsAdmin ? "" : "locked-btn")" @onclick="ExportAsync" disabled="@(!Session.IsAdmin)">إنشاء ومشاركة نسخة</button>
+   <button class="btn danger @(Session.IsAdmin ? "" : "locked-btn")" @onclick="RestoreAsync" disabled="@(!Session.IsAdmin)">استعادة نسخة</button>
+@@ -40,13 +39,13 @@
+ </div>
+ <div class="panel">
+  <h2>معلومات التطبيق</h2>
+- <div class="setting-row"><span>الإصدار</span><strong>2.0.0 VIP Accounting</strong></div>
++ <div class="setting-row"><span>الإصدار</span><strong>2.1.0</strong></div>
+  <div class="actions"><a class="btn ghost" href="/privacy">سياسة الخصوصية</a></div>
+ </div>
+ @code {
+  private string? message; private bool ok;
+  private string serverUrl = string.Empty; private string pairingKey = string.Empty; private bool autoSync = true;
+- private string theme = "green"; private string fontScale = "1"; private string language = "ar";
++ private string theme = "green"; private string background = "none"; private string fontScale = "1"; private string language = "ar";
+ 
+  protected override void OnInitialized()
+  {
+@@ -61,6 +60,7 @@
+   {
+    var prefs = await JS.InvokeAsync<AppearancePreferences>("awadUiPreferences.get");
+    theme = string.IsNullOrWhiteSpace(prefs.Theme) ? "green" : prefs.Theme;
++   background = string.IsNullOrWhiteSpace(prefs.Background) ? "none" : prefs.Background;
+    fontScale = prefs.FontScale <= 0 ? "1" : prefs.FontScale.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    language = prefs.Language == "en" ? "en" : "ar";
+    StateHasChanged();
+@@ -71,8 +71,8 @@
+  private async Task SaveAppearance()
+  {
+   var scale = double.TryParse(fontScale, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : 1;
+-  await JS.InvokeVoidAsync("awadUiPreferences.save", new { theme, fontScale = scale, language });
+-  ok = true; message = "تم حفظ إعدادات المظهر والخط واللغة.";
++  await JS.InvokeVoidAsync("awadUiPreferences.save", new { theme, background, fontScale = scale, language });
++  ok = true; message = "تم حفظ إعدادات المظهر.";
+  }
+  private async Task SaveSyncAsync(){await LocalSync.SavePreferencesAsync(serverUrl,pairingKey,autoSync);serverUrl=LocalSync.ServerUrl;}
+  private async Task SyncNowAsync(){await LocalSync.SyncNowAsync();}
+@@ -80,5 +80,5 @@
+  public void Dispose()=>LocalSync.Changed-=SyncChanged;
+  private async Task ExportAsync(){try{await Backup.ShareBackupAsync();ok=true;message="تم إنشاء النسخة وفتح المشاركة.";}catch(Exception ex){ok=false;message=ex.Message;}}
+  private async Task RestoreAsync(){try{await Backup.RestoreBackupAsync();ok=true;message="تمت الاستعادة. أعد تشغيل التطبيق.";}catch(Exception ex){ok=false;message=ex.Message;}}
+- private sealed class AppearancePreferences{public string Theme{get;set;}="green";public double FontScale{get;set;}=1;public string Language{get;set;}="ar";}
++ private sealed class AppearancePreferences{public string Theme{get;set;}="green";public string Background{get;set;}="none";public double FontScale{get;set;}=1;public string Language{get;set;}="ar";}
+ }
+diff --git a/Components/Pages/Users.razor b/Components/Pages/Users.razor
+index f4f89ac..6dd5034 100644
+--- a/Components/Pages/Users.razor
++++ b/Components/Pages/Users.razor
+@@ -8,18 +8,21 @@
+ }
+ else
+ {
+- <h1>إدارة المستخدمين</h1>
++ <h1>حسابات المستخدمين</h1>
+  <div class="panel">
+   <EditForm Model="model" OnValidSubmit="SaveAsync">
+    <div class="form-grid">
+-    <div><label>الاسم</label><InputText class="form-control" @bind-Value="model.FullName" /></div>
+-    <div><label>البريد</label><InputText class="form-control" @bind-Value="model.Email" /></div>
+-    <div><label>كلمة المرور @(model.Id>0?"(اتركها فارغة دون تغيير)":"")</label><InputText type="password" class="form-control" @bind-Value="model.Password" /></div>
++    <div><label>اسم الحساب</label><InputText class="form-control" @bind-Value="model.FullName" /></div>
++    <div><label>رمز الدخول @(model.Id>0?"(6 أحرف، اتركه فارغًا دون تغيير)":"(6 أحرف)")</label><InputText type="password" maxlength="6" class="form-control access-code-input" @bind-Value="model.AccessCode" /></div>
+     <div><label>الدور</label><InputSelect class="form-control" @bind-Value="model.Role">
