@@ -1,25 +1,20 @@
 @page "/more"
 @inject AppSession Session
-<h1>المزيد</h1>
-<div class="menu-grid">
- <a class="vip-menu-link" href="/accounting"><span>المركز المالي</span></a>
- <a href="/invoices"><span>الفواتير</span></a>
- <a href="/cultivation"><span>خسائر التربية</span></a>
- <a href="/farms"><span>المزارع</span></a>
- <a href="/creditors"><span>الدائنون</span></a>
- <a href="/zakat"><span>الزكاة</span></a>
- <a href="/reports"><span>التقارير</span></a>
- <a href="/settings"><span>الإعدادات والنسخ</span></a>
+
+<div class="page-head"><div><h1>القائمة</h1><span class="erp-subtitle">وظائف النظام</span></div></div>
+<div class="menu-grid erp-menu-grid">
+ <a class="finance-menu-link" href="/accounting"><span>◫</span><b>المركز المالي</b></a>
+ <a href="/invoices"><span>▤</span><b>الفواتير</b></a>
+ <a href="/cultivation"><span>▦</span><b>خسائر التربية</b></a>
+ <a href="/farms"><span>⌂</span><b>المزارع</b></a>
+ <a href="/creditors"><span>◉</span><b>الدائنون</b></a>
+ <a href="/zakat"><span>ز</span><b>الزكاة</b></a>
+ <a href="/reports"><span>▥</span><b>التقارير</b></a>
+ <a href="/settings"><span>⚙</span><b>الإعدادات</b></a>
  @if(Session.IsAdmin)
  {
-  <a href="/catalogs"><span>القوائم المحاسبية</span></a>
-  <a href="/users"><span>المستخدمون</span></a>
-  <a href="/audit"><span>سجل التدقيق</span></a>
- }
- else
- {
-  <div class="menu-link locked"><span>القوائم المحاسبية</span><small>🔒 للمدير فقط</small></div>
-  <div class="menu-link locked"><span>المستخدمون</span><small>🔒 للمدير فقط</small></div>
-  <div class="menu-link locked"><span>سجل التدقيق</span><small>🔒 للمدير فقط</small></div>
+  <a href="/catalogs"><span>☷</span><b>القوائم</b></a>
+  <a href="/users"><span>◎</span><b>المستخدمون</b></a>
+  <a href="/audit"><span>≣</span><b>سجل التدقيق</b></a>
  }
 </div>
