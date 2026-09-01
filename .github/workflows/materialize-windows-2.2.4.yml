@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract, patch, and commit tested Windows source
+      - name: Extract source and apply 2.2.2 files
         shell: pwsh
         run: |
           Set-Location $env:GITHUB_WORKSPACE
@@ -32,28 +32,36 @@ jobs:
           $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
           if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
           $windowsRoot = $builder.Directory.Parent.FullName
+          $windowsRoot | Set-Content "$env:RUNNER_TEMP\windows-root.txt"
 
           $patchRoot = Join-Path $env:GITHUB_WORKSPACE '.github\windows-vip-2.2.2'
-          $patchFiles = @(
+          foreach ($relative in @(
             'QatFarm.Web\Data\DatabaseSchemaUpdater.cs',
             'QatFarm.Web\database\Upgrade_Accounting_2_1.sql',
             'Testing\Product-Readiness-QA.ps1',
             'QatFarm.Web\QatFarm.Web.csproj',
             'Installer\QatFarmSystem.iss'
-          )
-          foreach ($relative in $patchFiles) {
+          )) {
             $source = Join-Path $patchRoot $relative
             $target = Join-Path $windowsRoot $relative
             if (-not (Test-Path $source)) { throw "Missing Windows patch file: $relative" }
             Copy-Item $source $target -Force
           }
 
+      - name: Apply final 2.2.3 stability patch
+        shell: pwsh
+        run: |
+          $windowsRoot = Get-Content "$env:RUNNER_TEMP\windows-root.txt" -Raw
+          $windowsRoot = $windowsRoot.Trim()
           $finalPatch = Join-Path $env:GITHUB_WORKSPACE '.github\windows-vip-2.2.3\Apply-FinalPatch.ps1'
           if (-not (Test-Path $finalPatch)) { throw 'Missing 2.2.3 final patch script.' }
           & $finalPatch -WindowsRoot $windowsRoot
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Commit materialized tested Windows source
+        shell: pwsh
+        run: |
           Set-Location $env:GITHUB_WORKSPACE
+          $windowsRoot = (Get-Content "$env:RUNNER_TEMP\windows-root.txt" -Raw).Trim()
           $targetRoot = '.github/windows-source-2.2.4'
           Remove-Item $targetRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item $targetRoot -ItemType Directory -Force | Out-Null
@@ -68,8 +76,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add --force $targetRoot
           $status = git status --porcelain -- $targetRoot
-          if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) {
-            throw 'Materialized Windows source was not staged.'
-          }
+          if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) { throw 'Materialized Windows source was not staged.' }
           git commit -m 'chore: materialize tested Windows 2.2.3 source'
           git push origin HEAD:feature/windows-voice-2.2.4
