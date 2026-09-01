@@ -3,32 +3,42 @@
 @inject AppSession Session
 @inject ZakatNotificationService ZakatNotifications
 
-<h1>الزكاة</h1>
-@if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
-<div class="summary-strip zakat-summary"><span>المعلقة: <b>@pending.Sum(x=>x.Invoice.ZakatAmount).ToString("N2")</b> ر.ي</span><span>عدد الفواتير: <b>@pending.Count</b></span></div>
+<div class="page-head">
+ <div><h1>الزكاة</h1><span class="erp-subtitle">الاستحقاق والتسليم</span></div>
+ <span class="erp-status @(pending.Count==0?"paid":"partial")">@(pending.Count==0?"لا يوجد معلق":$"{pending.Count} معلقة")</span>
+</div>
 
-<h2 class="section-title">بانتظار الدفع والتأكيد</h2>
-<div class="card-list">
+<div class="summary-strip zakat-summary">
+ <span>المعلقة <b>@pending.Sum(x=>x.Invoice.ZakatAmount).ToString("N2")</b></span>
+ <span>المدفوعة <b>@paid.Sum(x=>x.Invoice.ZakatAmount).ToString("N2")</b></span>
+ <span>الفواتير المعلقة <b>@pending.Count</b></span>
+</div>
+
+@if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+
+<div class="erp-register-head"><strong>الزكاة المعلقة</strong><span>@pending.Count سجل</span></div>
+<div class="card-list zakat-register">
 @foreach(var row in pending)
 {
- <div class="data-card">
-  <div class="grow"><strong>@row.Invoice.InvoiceNumber</strong><small>@row.FarmName — @row.Invoice.InvoiceDate.ToString("yyyy/MM/dd")</small><div class="money-line"><span>الزكاة <b>@row.Invoice.ZakatAmount.ToString("N2")</b> ر.ي</span></div></div>
-  @if(Session.CanRecordPayments){<button class="btn small success" @onclick="() => Start(row)">تأكيد الوصول</button>}
- </div>
+ <article class="data-card zakat-row">
+  <div class="record-icon">ز</div>
+  <div class="grow"><strong>@row.Invoice.InvoiceNumber</strong><small>@row.FarmName · @row.Invoice.InvoiceDate.ToString("yyyy/MM/dd")</small><div class="record-subline"><span>المبلغ</span><b>@row.Invoice.ZakatAmount.ToString("N2") ر.ي</b></div></div>
+  @if(Session.CanRecordPayments){<button class="btn small success" @onclick="() => Start(row)">تأكيد التسليم</button>}
+ </article>
 }
 </div>
 @if(pending.Count==0){<div class="empty-state compact">لا توجد زكاة معلقة.</div>}
 
 @if(paid.Count>0)
 {
- <h2 class="section-title">سجل الزكاة المدفوعة</h2>
+ <div class="erp-register-head"><strong>سجل المدفوع</strong><span>@paid.Count سجل</span></div>
  <div class="card-list">
  @foreach(var row in paid)
  {
-  <div class="data-card zakat-paid-card">
-   <div class="grow"><strong>@row.Invoice.InvoiceNumber</strong><small>@row.FarmName — @(row.Invoice.ZakatPaidAt?.ToString("yyyy/MM/dd HH:mm") ?? "-")</small><div class="money-line"><span>@row.Invoice.ZakatAmount.ToString("N2") ر.ي</span><span>المستلم: @(row.Invoice.ZakatRecipientName ?? "-")</span><span>السند: @(row.Invoice.ZakatPaymentReference ?? "-")</span></div></div>
-   <span class="badge success">تم التأكيد</span>
-  </div>
+  <article class="data-card zakat-paid-card">
+   <div class="grow"><strong>@row.Invoice.InvoiceNumber</strong><small>@row.FarmName · @(row.Invoice.ZakatPaidAt?.ToString("yyyy/MM/dd HH:mm") ?? "-")</small><div class="account-values zakat-values"><div><span>المبلغ</span><strong>@row.Invoice.ZakatAmount.ToString("N2")</strong></div><div><span>المستلم</span><strong>@(row.Invoice.ZakatRecipientName ?? "-")</strong></div><div><span>المرجع</span><strong>@(row.Invoice.ZakatPaymentReference ?? "-")</strong></div></div></div>
+   <span class="erp-status paid">مؤكدة</span>
+  </article>
  }
  </div>
 }
@@ -36,13 +46,14 @@
 @if(selected is not null)
 {
  <div class="modal-backdrop"><div class="modal-card">
-  <h2>تأكيد وصول الزكاة</h2>
+  <h2>تأكيد تسليم الزكاة</h2>
   <div class="zakat-confirm-amount">@selected.Invoice.ZakatAmount.ToString("N2") ر.ي</div>
-  <label>اسم مستلم الزكاة</label><input class="form-control" @bind="recipient" />
+  <label>اسم المستلم</label><input class="form-control" @bind="recipient" />
   <label>رقم السند أو المرجع</label><input class="form-control" @bind="reference" />
-  <div class="actions"><button class="btn success" @onclick="ConfirmAsync">تأكيد الوصول</button><button class="btn ghost" @onclick="Close">إلغاء</button></div>
+  <div class="actions"><button class="btn success" @onclick="ConfirmAsync">تأكيد</button><button class="btn ghost" @onclick="Close">إلغاء</button></div>
  </div></div>
 }
+
 @code {
  private List<InvoiceListRow> pending=[]; private List<InvoiceListRow> paid=[]; private InvoiceListRow? selected;
  private string? recipient; private string? reference; private string? message; private bool ok;
@@ -50,5 +61,5 @@
  private async Task LoadAsync(){pending=await Service.GetPendingZakatAsync();paid=await Service.GetPaidZakatAsync();}
  private void Start(InvoiceListRow row){selected=row;recipient=null;reference=null;}
  private void Close(){selected=null;recipient=null;reference=null;}
- private async Task ConfirmAsync(){if(selected is null)return;try{await Service.ConfirmZakatPaidAsync(selected.Invoice.Id,recipient,reference);ok=true;message="تم تسجيل دفع الزكاة وتأكيد وصولها.";Close();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private async Task ConfirmAsync(){if(selected is null)return;try{await Service.ConfirmZakatPaidAsync(selected.Invoice.Id,recipient,reference);ok=true;message="تم تأكيد التسليم.";Close();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
 }
