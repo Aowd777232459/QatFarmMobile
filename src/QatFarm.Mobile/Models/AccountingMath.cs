@@ -8,8 +8,8 @@ public static class AccountingMath
     public static decimal LineTotal(int quantity, decimal unitPrice)
         => quantity <= 0 || unitPrice <= 0 ? 0m : Money(quantity * unitPrice);
 
-    public static decimal Gross(IEnumerable<InvoiceItemInput> items)
-        => Money(items.Sum(x => LineTotal(x.Quantity, x.UnitPrice)));
+    public static decimal Gross(IEnumerable<decimal> lineTotals)
+        => Money(lineTotals.Sum(x => Math.Max(0m, x)));
 
     public static decimal Zakat(decimal grossAmount, decimal percent)
     {
@@ -17,8 +17,8 @@ public static class AccountingMath
         return Money(grossAmount * percent / 100m);
     }
 
-    public static decimal Expenses(IEnumerable<InvoiceExpenseInput> expenses)
-        => Money(expenses.Sum(x => Math.Max(0m, x.Amount)));
+    public static decimal Expenses(IEnumerable<decimal> amounts)
+        => Money(amounts.Sum(x => Math.Max(0m, x)));
 
     public static decimal Net(decimal grossAmount, decimal zakatAmount, decimal expenses)
         => Money(grossAmount - zakatAmount - expenses);
