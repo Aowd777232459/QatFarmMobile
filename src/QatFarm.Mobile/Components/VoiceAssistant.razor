@@ -1,0 +1,194 @@
+@inject IVoiceRecognitionService VoiceRecognition
+@inject VoiceAssistantService Assistant
+@inject NavigationManager Navigation
+
+<div class="voice-assistant-root">
+    <button type="button" class="voice-fab @(listening ? "listening" : "")" @onclick="ListenAsync" disabled="@busy" title="المعاون الصوتي">
+        <span class="voice-fab-icon">@(listening ? "◉" : "🎙")</span>
+        <small>@(listening ? "أسمعك" : "صوت")</small>
+    </button>
+
+    @if (opened)
+    {
+        <div class="voice-sheet-backdrop" @onclick="Close"></div>
+        <section class="voice-sheet" role="dialog" aria-modal="true" aria-label="المعاون الصوتي">
+            <div class="voice-sheet-head">
+                <div>
+                    <strong>المعاون الصوتي</strong>
+                    <small>عواد سوفت</small>
+                </div>
+                <button type="button" class="voice-close" @onclick="Close">×</button>
+            </div>
+
+            <div class="voice-transcript-box">
+                <label>الأمر</label>
+                <div class="voice-command-entry">
+                    <input class="form-control" @bind="typedCommand" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="تكلم أو اكتب الأمر هنا" />
+                    <button type="button" class="voice-inline-mic" @onclick="ListenAsync" disabled="@busy">🎙</button>
+                </div>
+                <button type="button" class="btn primary voice-run-text" @onclick="InterpretTypedAsync" disabled="@(busy || string.IsNullOrWhiteSpace(typedCommand))">تنفيذ الأمر</button>
+            </div>
+
+            @if (listening)
+            {
+                <div class="voice-listening-state">
+                    <span class="voice-pulse"></span>
+                    <strong>تحدث الآن...</strong>
+                </div>
+            }
+
+            @if (proposal is not null)
+            {
+                <div class="voice-proposal-card @(proposal.RequiresConfirmation ? "needs-confirm" : "")">
+                    <span class="voice-understood">فهمت أنك تريد</span>
+                    <h3>@proposal.Title</h3>
+                    <div class="voice-summary">@proposal.Summary</div>
+                    @if (proposal.RequiresConfirmation)
+                    {
+                        <div class="voice-confirm-note">راجع البيانات قبل التنفيذ.</div>
+                        <div class="voice-actions">
+                            <button type="button" class="btn primary" @onclick="ExecuteProposalAsync" disabled="@busy">تنفيذ</button>
+                            <button type="button" class="btn ghost" @onclick="CancelProposal">إلغاء</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                <div class="alert @(statusOk ? "success" : "danger") voice-status">@statusMessage</div>
+            }
+
+            <div class="voice-examples">
+                <button type="button" @onclick='() => UseExample("فاتورة لعبدالله 10 حبات أميال سعر 5000 دفع 20000")'>فاتورة</button>
+                <button type="button" @onclick='() => UseExample("سجل خسارة سقي بمبلغ عشرين ألف")'>خسارة</button>
+                <button type="button" @onclick='() => UseExample("كم مبيعات اليوم")'>استعلام</button>
+                <button type="button" @onclick='() => UseExample("صدر فواتير أغسطس PDF")'>تقرير PDF</button>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private bool opened;
+    private bool listening;
+    private bool busy;
+    private bool statusOk;
+    private string typedCommand = string.Empty;
+    private string? statusMessage;
+    private VoiceCommandProposal? proposal;
+
+    private async Task ListenAsync()
+    {
+        opened = true;
+        proposal = null;
+        statusMessage = null;
+        if (!VoiceRecognition.IsSupported)
+        {
+            statusOk = false;
+            statusMessage = "التعرف الصوتي غير متاح على هذا الجهاز. اكتب الأمر في الخانة وسيعمل المعاون بنفس الطريقة.";
+            return;
+        }
+
+        busy = true;
+        listening = true;
+        try
+        {
+            var result = await VoiceRecognition.ListenAsync();
+            listening = false;
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Text))
+            {
+                statusOk = false;
+                statusMessage = result.Message;
+                return;
+            }
+            typedCommand = result.Text;
+            await InterpretAsync(result.Text);
+        }
+        finally
+        {
+            listening = false;
+            busy = false;
+        }
+    }
+
+    private async Task InterpretTypedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(typedCommand)) return;
+        opened = true;
+        busy = true;
+        try { await InterpretAsync(typedCommand); }
+        finally { busy = false; }
+    }
+
+    private async Task InterpretAsync(string command)
+    {
+        statusMessage = null;
+        proposal = await Assistant.InterpretAsync(command);
+        await SpeakAsync(proposal.SpokenResponse);
+        if (!proposal.RequiresConfirmation)
+            await ExecuteProposalAsync();
+    }
+
+    private async Task ExecuteProposalAsync()
+    {
+        if (proposal is null) return;
+        busy = true;
+        try
+        {
+            var result = await proposal.ExecuteAsync();
+            statusOk = result.Success;
+            statusMessage = result.Message;
+            await SpeakAsync(result.Message);
+            if (result.Success && !string.IsNullOrWhiteSpace(result.NavigateTo))
+            {
+                var destination = result.NavigateTo;
+                proposal = null;
+                opened = false;
+                Navigation.NavigateTo(destination);
+            }
+        }
+        catch (Exception ex)
+        {
+            statusOk = false;
+            statusMessage = ex.Message;
+            await SpeakAsync(ex.Message);
+        }
+        finally { busy = false; }
+    }
+
+    private static async Task SpeakAsync(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try { await Microsoft.Maui.Media.TextToSpeech.Default.SpeakAsync(text); }
+        catch { }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !busy && !string.IsNullOrWhiteSpace(typedCommand))
+            await InterpretTypedAsync();
+    }
+
+    private void UseExample(string value)
+    {
+        typedCommand = value;
+        statusMessage = null;
+        proposal = null;
+    }
+
+    private void CancelProposal()
+    {
+        proposal = null;
+        statusOk = true;
+        statusMessage = "تم إلغاء الأمر.";
+    }
+
+    private void Close()
+    {
+        opened = false;
+        proposal = null;
+        statusMessage = null;
+        listening = false;
+    }
+}
