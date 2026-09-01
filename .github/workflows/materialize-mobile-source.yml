@@ -1,0 +1,56 @@
+name: Materialize tested mobile source
+
+on:
+  push:
+    branches:
+      - feature/voice-assistant-2.2.0
+    paths:
+      - '.github/workflows/materialize-mobile-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download tested 2.1.0 prepared source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -L --fail-with-body \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9778689977/zip" \
+            -o prepared.zip
+          rm -rf prepared src/QatFarm.Mobile
+          mkdir prepared
+          unzip -q prepared.zip -d prepared
+          project_dir="$(find prepared -type f -name QatFarm.Mobile.csproj -printf '%h\n' | head -n 1)"
+          test -n "$project_dir"
+          mkdir -p src/QatFarm.Mobile
+          cp -a "$project_dir"/. src/QatFarm.Mobile/
+          rm -rf src/QatFarm.Mobile/bin src/QatFarm.Mobile/obj
+          test -f src/QatFarm.Mobile/QatFarm.Mobile.csproj
+          test -f src/QatFarm.Mobile/Components/Pages/Invoices.razor
+          test -f src/QatFarm.Mobile/Services/QatFarmService.cs
+
+      - name: Commit materialized source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/QatFarm.Mobile
+          if git diff --cached --quiet; then
+            echo 'No source changes to commit.'
+          else
+            git commit -m 'chore: materialize tested mobile 2.1.0 source'
+            git push origin HEAD:feature/voice-assistant-2.2.0
+          fi
