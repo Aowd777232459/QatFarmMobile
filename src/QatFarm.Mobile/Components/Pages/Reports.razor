@@ -2,31 +2,39 @@
 @inject QatFarmService Service
 @inject MobilePdfService Pdf
 
-<div class="page-head"><h1>التقارير السنوية</h1></div>
-<div class="panel">
- <div class="form-grid">
+<div class="page-head">
+ <div><h1>التقارير</h1><span class="erp-subtitle">الملخصات والتصدير PDF</span></div>
+</div>
+
+<div class="panel report-control-panel">
+ <div class="form-grid report-filter-grid">
   <div><label>المزرعة</label><InputSelect class="form-control" @bind-Value="farmId"><option value="0">اختر المزرعة</option>@foreach(var f in farms){<option value="@f.Id">@f.Name</option>}</InputSelect></div>
   <div><label>السنة</label><input class="form-control" type="number" @bind="year" /></div>
  </div>
- <div class="actions"><button class="btn" @onclick="ShowAsync">عرض الملخص</button><button class="btn primary" @onclick="InvoicesPdfAsync">PDF الفواتير السنوية</button><button class="btn primary" @onclick="CultivationPdfAsync">PDF خسائر التربية</button></div>
+ <div class="actions report-actions"><button class="btn primary" @onclick="ShowAsync">عرض الملخص</button><button class="btn" @onclick="InvoicesPdfAsync">PDF الفواتير</button><button class="btn" @onclick="CultivationPdfAsync">PDF الخسائر</button></div>
  @if(!string.IsNullOrEmpty(message)){<div class="alert danger">@message</div>}
 </div>
+
 @if(summary is not null)
 {
- <div class="stat-grid">
-  <div class="stat-card"><span>المبيعات</span><strong>@summary.GrossSales.ToString("N2")</strong></div>
-  <div class="stat-card"><span>المحصّل</span><strong>@summary.CollectedSales.ToString("N2")</strong></div>
-  <div class="stat-card"><span>خسائر التربية</span><strong>@summary.CultivationExpenses.ToString("N2")</strong></div>
-  <div class="stat-card danger"><span>ديون التربية</span><strong>@summary.CultivationDebtOutstanding.ToString("N2")</strong></div>
-  <div class="stat-card"><span>الربح المحاسبي</span><strong>@summary.AccountingProfit.ToString("N2")</strong></div>
-  <div class="stat-card success"><span>الربح الآمن</span><strong>@summary.SafeDistributableProfit.ToString("N2")</strong></div>
+ <div class="erp-register-head"><strong>الملخص المالي — @year</strong><span>@FarmName</span></div>
+ <div class="stat-grid report-stats">
+  <div class="stat-card"><span>المبيعات</span><strong>@Money(summary.GrossSales)</strong></div>
+  <div class="stat-card"><span>المحصّل</span><strong>@Money(summary.CollectedSales)</strong></div>
+  <div class="stat-card"><span>خسائر التربية</span><strong>@Money(summary.CultivationExpenses)</strong></div>
+  <div class="stat-card danger"><span>ديون التربية</span><strong>@Money(summary.CultivationDebtOutstanding)</strong></div>
+  <div class="stat-card"><span>الربح المحاسبي</span><strong>@Money(summary.AccountingProfit)</strong></div>
+  <div class="stat-card success"><span>الربح الآمن</span><strong>@Money(summary.SafeDistributableProfit)</strong></div>
  </div>
 }
+
 @code {
  private List<Farm> farms=[]; private long farmId; private int year=DateTime.Today.Year;
  private AnnualFinanceSummary? summary; private string? message;
+ private string FarmName => farms.FirstOrDefault(x=>x.Id==farmId)?.Name ?? "-";
  protected override async Task OnInitializedAsync()=>farms=await Service.GetFarmsAsync(true);
  private async Task ShowAsync(){try{if(farmId==0)throw new InvalidOperationException("اختر المزرعة.");summary=await Service.GetAnnualFinanceSummaryAsync(farmId,year);message=null;}catch(Exception ex){message=ex.Message;}}
  private async Task InvoicesPdfAsync(){try{if(farmId==0)throw new InvalidOperationException("اختر المزرعة.");var path=await Pdf.CreateAnnualInvoicesPdfAsync(farmId,year);await Pdf.SharePdfAsync(path,"تقرير الفواتير السنوي");}catch(Exception ex){message=ex.Message;}}
  private async Task CultivationPdfAsync(){try{if(farmId==0)throw new InvalidOperationException("اختر المزرعة.");var path=await Pdf.CreateAnnualCultivationPdfAsync(farmId,year);await Pdf.SharePdfAsync(path,"تقرير خسائر التربية");}catch(Exception ex){message=ex.Message;}}
+ private static string Money(decimal value)=>$"{value:N2} ر.ي";
 }
