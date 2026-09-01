@@ -68,12 +68,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet publish $project -c Release -r win-x64 --self-contained true --no-restore -p:PublishReadyToRun=false -p:PublishSingleFile=false -p:PublishTrimmed=false -o $publish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $iscc = @(
-            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
-            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
-            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
-          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          $iscc = $null
+          $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if ($cmd -and (Test-Path $cmd.Source)) { $iscc = $cmd.Source }
+          if (-not $iscc) {
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+              "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+              'C:\ProgramData\chocolatey\lib\innosetup\tools\ISCC.exe',
+              'C:\ProgramData\chocolatey\bin\ISCC.exe'
+            )
+            $iscc = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          }
+          if (-not $iscc) {
+            $found = Get-ChildItem 'C:\ProgramData\chocolatey','C:\Program Files (x86)','C:\Program Files' -Filter ISCC.exe -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $iscc = $found.FullName }
+          }
           if (-not $iscc) { throw 'ISCC.exe not found.' }
+          Write-Host "ISCC=$iscc"
           & $iscc (Join-Path $root 'Installer\QatFarmSystem.iss')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $setup = Get-ChildItem $installer -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
