@@ -2,11 +2,10 @@
 @inject QatFarmService Service
 @inject MobilePdfService Pdf
 
-<section class="accounting-hero">
- <div>
-  <h1>المحاسبة والتحليل</h1>
- </div>
-</section>
+<div class="page-head accounting-page-head">
+ <div><h1>المحاسبة والتحليل</h1><span class="erp-subtitle">المركز المالي</span></div>
+ <button class="btn" @onclick="ExportPdfAsync" disabled="@(loading || exporting)">@(exporting ? "جارٍ التجهيز..." : "PDF")</button>
+</div>
 
 <div class="filter-bar accounting-filter">
  <InputSelect class="form-control" @bind-Value="farmId">
@@ -14,7 +13,7 @@
   @foreach (var farm in farms) { <option value="@farm.Id">@farm.Name</option> }
  </InputSelect>
  <input class="form-control" type="number" min="2000" max="2100" @bind="year" aria-label="السنة" />
- <div class="filter-actions"><button class="btn primary" @onclick="LoadAsync" disabled="@loading">@(loading ? "جارٍ التحليل..." : "تحليل")</button><button class="btn" @onclick="ExportPdfAsync" disabled="@(loading || exporting)">@(exporting ? "جارٍ التجهيز..." : "PDF")</button></div>
+ <button class="btn primary" @onclick="LoadAsync" disabled="@loading">@(loading ? "جارٍ التحليل..." : "عرض")</button>
 </div>
 
 @if (!string.IsNullOrWhiteSpace(error))
@@ -24,32 +23,32 @@
 
 @if (summary is null && loading)
 {
- <div class="loading">جارٍ إعداد المركز المالي...</div>
+ <div class="loading">جارٍ التحميل...</div>
 }
 else if (summary is not null)
 {
  <div class="accounting-context-line">
-  <span>@summary.FarmName</span><strong>@summary.Year</strong><span>@summary.PostedInvoiceCount فاتورة مرحلة</span>
+  <span>@summary.FarmName</span><strong>@summary.Year</strong><span>@summary.PostedInvoiceCount فاتورة</span>
  </div>
 
  @if (summary.OverdueCustomerInvoiceCount > 0 || summary.OverdueCultivationDebtCount > 0)
  {
   <div class="finance-warning">
-   <strong>تنبيه مالي يحتاج متابعة</strong>
-   <span>فواتير عملاء متأخرة: @summary.OverdueCustomerInvoiceCount</span>
+   <strong>تنبيه مالي</strong>
+   <span>عملاء متأخرون: @summary.OverdueCustomerInvoiceCount</span>
    <span>ديون تربية متأخرة: @summary.OverdueCultivationDebtCount</span>
   </div>
  }
 
- <div class="vip-kpi-grid">
-  <article class="vip-kpi sales"><span>إجمالي المبيعات</span><strong>@Money(summary.GrossSales)</strong><small>@summary.PostedInvoiceCount فاتورة</small></article>
-  <article class="vip-kpi collected"><span>المبيعات المحصلة</span><strong>@Money(summary.CollectedSales)</strong><small>@Percent(summary.CollectionPercent) نسبة التحصيل</small></article>
-  <article class="vip-kpi profit"><span>الربح المحاسبي</span><strong>@Money(summary.AccountingProfit)</strong><small>@Percent(summary.NetMarginPercent) هامش الربح</small></article>
-  <article class="vip-kpi cash"><span>صافي التدفق النقدي</span><strong>@Money(summary.NetCashFlow)</strong><small>داخل @Money(summary.CashInflow) · خارج @Money(summary.CashOutflow)</small></article>
-  <article class="vip-kpi receivable"><span>ذمم العملاء</span><strong>@Money(summary.CustomerReceivables)</strong><small>مبالغ واجبة التحصيل</small></article>
-  <article class="vip-kpi payable"><span>التزامات التربية</span><strong>@Money(summary.CultivationPayables)</strong><small>مبالغ واجبة السداد</small></article>
-  <article class="vip-kpi expenses"><span>إجمالي التكاليف</span><strong>@Money(summary.InvoiceExpenses + summary.CultivationExpenses)</strong><small>@Percent(summary.CostPercent) مع الزكاة من المبيعات</small></article>
-  <article class="vip-kpi zakat"><span>الزكاة المستحقة</span><strong>@Money(summary.ZakatAccrued)</strong><small>المدفوع في الفترة @Money(summary.ZakatPaid)</small></article>
+ <div class="finance-kpi-grid">
+  <article class="finance-kpi sales"><span>إجمالي المبيعات</span><strong>@Money(summary.GrossSales)</strong><small>@summary.PostedInvoiceCount فاتورة</small></article>
+  <article class="finance-kpi collected"><span>المبيعات المحصلة</span><strong>@Money(summary.CollectedSales)</strong><small>@Percent(summary.CollectionPercent)</small></article>
+  <article class="finance-kpi profit"><span>الربح المحاسبي</span><strong>@Money(summary.AccountingProfit)</strong><small>@Percent(summary.NetMarginPercent)</small></article>
+  <article class="finance-kpi cash"><span>صافي التدفق النقدي</span><strong>@Money(summary.NetCashFlow)</strong><small>داخل @Money(summary.CashInflow) · خارج @Money(summary.CashOutflow)</small></article>
+  <article class="finance-kpi receivable"><span>ذمم العملاء</span><strong>@Money(summary.CustomerReceivables)</strong></article>
+  <article class="finance-kpi payable"><span>التزامات التربية</span><strong>@Money(summary.CultivationPayables)</strong></article>
+  <article class="finance-kpi expenses"><span>إجمالي التكاليف</span><strong>@Money(summary.InvoiceExpenses + summary.CultivationExpenses)</strong><small>@Percent(summary.CostPercent)</small></article>
+  <article class="finance-kpi zakat"><span>الزكاة المستحقة</span><strong>@Money(summary.ZakatAccrued)</strong><small>مدفوع @Money(summary.ZakatPaid)</small></article>
  </div>
 
  <section class="finance-panel ratio-panel">
@@ -76,13 +75,13 @@ else if (summary is not null)
    </div>
   }
   </div>
-  <div class="chart-legend"><span class="sales">المبيعات</span><span class="costs">التكاليف</span><span>العمود الأخير: صافي الربح</span></div>
+  <div class="chart-legend"><span class="sales">المبيعات</span><span class="costs">التكاليف</span><span>الصافي</span></div>
  </section>
 
  <section class="finance-panel">
   <div class="finance-section-head"><div><span>مقارنة المزارع</span></div></div>
-  <div class="vip-table-wrap">
-   <table class="vip-table">
+  <div class="finance-table-wrap">
+   <table class="finance-table">
     <thead><tr><th>المزرعة</th><th>المبيعات</th><th>التكاليف</th><th>الصافي</th><th>الهامش</th><th>لنا</th><th>علينا</th></tr></thead>
     <tbody>
     @foreach (var row in summary.Farms)
@@ -92,7 +91,7 @@ else if (summary is not null)
     </tbody>
    </table>
   </div>
-  @if (summary.Farms.Count == 0) { <div class="empty-state compact">لا توجد حركة مالية في الفترة المحددة.</div> }
+  @if (summary.Farms.Count == 0) { <div class="empty-state compact">لا توجد حركة مالية.</div> }
  </section>
 
  <section class="finance-panel">
@@ -107,7 +106,7 @@ else if (summary is not null)
    </article>
   }
   </div>
-  @if (summary.RecentCashMovements.Count == 0) { <div class="empty-state compact">لا توجد حركة نقدية في الفترة المحددة.</div> }
+  @if (summary.RecentCashMovements.Count == 0) { <div class="empty-state compact">لا توجد حركة نقدية.</div> }
  </section>
 }
 
@@ -133,13 +132,14 @@ else if (summary is not null)
   error = null;
   try { summary = await Service.GetAccountingCenterAsync(year, farmId == 0 ? null : farmId); }
   catch (Exception ex) { error = ex.Message; }
- finally { loading = false; }
+  finally { loading = false; }
  }
 
  private async Task ExportPdfAsync()
  {
   if (exporting) return;
-  exporting = true; error = null;
+  exporting = true;
+  error = null;
   try
   {
    var path = await Pdf.CreateExecutiveAccountingPdfAsync(farmId == 0 ? null : farmId, year);
