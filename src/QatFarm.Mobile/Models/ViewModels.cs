@@ -26,11 +26,11 @@ public sealed class InvoiceEditorModel
     public string? Notes { get; set; }
     public List<InvoiceItemInput> Items { get; set; } = [new()];
     public List<InvoiceExpenseInput> Expenses { get; set; } = [];
-    public decimal GrossAmount => Items.Sum(x => x.Quantity * x.UnitPrice);
-    public decimal ZakatAmount => Math.Round(GrossAmount * ZakatPercent / 100m, 2);
-    public decimal TotalExpenses => Expenses.Sum(x => x.Amount);
-    public decimal NetAmount => GrossAmount - ZakatAmount - TotalExpenses;
-    public decimal AmountDue => Math.Max(0, GrossAmount - AmountPaid);
+    public decimal GrossAmount => AccountingMath.Gross(Items);
+    public decimal ZakatAmount => AccountingMath.Zakat(GrossAmount, ZakatPercent);
+    public decimal TotalExpenses => AccountingMath.Expenses(Expenses);
+    public decimal NetAmount => AccountingMath.Net(GrossAmount, ZakatAmount, TotalExpenses);
+    public decimal AmountDue => AccountingMath.Due(GrossAmount, AmountPaid);
 }
 
 public sealed class InvoiceItemInput
@@ -38,7 +38,7 @@ public sealed class InvoiceItemInput
     public long QatTypeId { get; set; }
     public int Quantity { get; set; } = 1;
     public decimal UnitPrice { get; set; }
-    public decimal Total => Quantity * UnitPrice;
+    public decimal Total => AccountingMath.LineTotal(Quantity, UnitPrice);
 }
 
 public sealed class InvoiceExpenseInput
@@ -61,7 +61,7 @@ public sealed class CultivationExpenseRow
     public string FarmName { get; set; } = string.Empty;
     public string ExpenseTypeName { get; set; } = string.Empty;
     public string CreditorName { get; set; } = string.Empty;
-    public decimal Outstanding => Math.Max(0, Expense.Amount - Expense.PaidAmount);
+    public decimal Outstanding => AccountingMath.Outstanding(Expense.Amount, Expense.PaidAmount);
     public bool IsOverdue => Outstanding > 0 && Expense.DueDate.HasValue && Expense.DueDate.Value.Date < DateTime.Today;
 }
 
@@ -96,7 +96,7 @@ public sealed class CustomerBalanceRow
     public Customer Customer { get; set; } = new();
     public decimal Invoiced { get; set; }
     public decimal Paid { get; set; }
-    public decimal Balance => Customer.OpeningBalance + Invoiced - Paid;
+    public decimal Balance => AccountingMath.CustomerBalance(Customer.OpeningBalance, Invoiced, Paid);
 }
 
 public sealed class UserEditModel
@@ -125,10 +125,10 @@ public sealed class AccountingCenterSummary
     public decimal AccountingProfit { get; set; }
     public decimal CashInflow { get; set; }
     public decimal CashOutflow { get; set; }
-    public decimal NetCashFlow => CashInflow - CashOutflow;
-    public decimal NetMarginPercent => GrossSales <= 0 ? 0 : AccountingProfit / GrossSales * 100m;
-    public decimal CollectionPercent => GrossSales <= 0 ? 0 : CollectedSales / GrossSales * 100m;
-    public decimal CostPercent => GrossSales <= 0 ? 0 : (InvoiceExpenses + CultivationExpenses + ZakatAccrued) / GrossSales * 100m;
+    public decimal NetCashFlow => AccountingMath.Money(CashInflow - CashOutflow);
+    public decimal NetMarginPercent => GrossSales <= 0 ? 0 : AccountingMath.Money(AccountingProfit / GrossSales * 100m);
+    public decimal CollectionPercent => GrossSales <= 0 ? 0 : AccountingMath.Money(CollectedSales / GrossSales * 100m);
+    public decimal CostPercent => GrossSales <= 0 ? 0 : AccountingMath.Money((InvoiceExpenses + CultivationExpenses + ZakatAccrued) / GrossSales * 100m);
     public int PostedInvoiceCount { get; set; }
     public int OverdueCustomerInvoiceCount { get; set; }
     public int OverdueCultivationDebtCount { get; set; }
@@ -157,7 +157,7 @@ public sealed class FarmPerformanceRow
     public decimal NetProfit { get; set; }
     public decimal Receivables { get; set; }
     public decimal Payables { get; set; }
-    public decimal MarginPercent => Sales <= 0 ? 0 : NetProfit / Sales * 100m;
+    public decimal MarginPercent => Sales <= 0 ? 0 : AccountingMath.Money(NetProfit / Sales * 100m);
 }
 
 public sealed class CashMovementRow
