@@ -1,0 +1,75 @@
+name: Materialize Windows 2.2.4 source
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-voice-2.2.4
+    paths:
+      - '.github/workflows/materialize-windows-2.2.4.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract tested Windows source and apply final 2.2.3 fixes
+        shell: pwsh
+        run: |
+          $archive = '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
+          if (-not (Test-Path $archive)) { throw "Missing $archive" }
+          Remove-Item windows-source -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $archive -DestinationPath windows-source -Force
+          $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
+          if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
+          $windowsRoot = $builder.Directory.Parent.FullName
+
+          $patchRoot = Join-Path (Get-Location) '.github\windows-vip-2.2.2'
+          $patchFiles = @(
+            'QatFarm.Web\Data\DatabaseSchemaUpdater.cs',
+            'QatFarm.Web\database\Upgrade_Accounting_2_1.sql',
+            'Testing\Product-Readiness-QA.ps1',
+            'QatFarm.Web\QatFarm.Web.csproj',
+            'Installer\QatFarmSystem.iss'
+          )
+          foreach ($relative in $patchFiles) {
+            $source = Join-Path $patchRoot $relative
+            $target = Join-Path $windowsRoot $relative
+            if (-not (Test-Path $source)) { throw "Missing Windows patch file: $relative" }
+            Copy-Item $source $target -Force
+          }
+
+          $finalPatch = Join-Path (Get-Location) '.github\windows-vip-2.2.3\Apply-FinalPatch.ps1'
+          if (-not (Test-Path $finalPatch)) { throw 'Missing 2.2.3 final patch script.' }
+          & $finalPatch -WindowsRoot $windowsRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Remove-Item 'src/QatFarm.Windows' -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item 'src/QatFarm.Windows' -ItemType Directory -Force | Out-Null
+          Copy-Item (Join-Path $windowsRoot '*') 'src/QatFarm.Windows' -Recurse -Force
+          Get-ChildItem 'src/QatFarm.Windows' -Directory -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -in @('bin','obj','Release','.vs') } |
+            Sort-Object FullName -Descending |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path 'src/QatFarm.Windows/QatFarm.Web/QatFarm.Web.csproj')) { throw 'Materialized Windows project missing.' }
+
+      - name: Commit materialized Windows source
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/QatFarm.Windows
+          if (git diff --cached --quiet) {
+            Write-Host 'No Windows source changes to commit.'
+          } else {
+            git commit -m 'chore: materialize tested Windows 2.2.3 source'
+            git push origin HEAD:feature/windows-voice-2.2.4
+          }
