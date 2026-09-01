@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract tested Windows source and apply final 2.2.3 fixes
+      - name: Extract, patch, and commit tested Windows source
         shell: pwsh
         run: |
           Set-Location $env:GITHUB_WORKSPACE
@@ -54,26 +54,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           Set-Location $env:GITHUB_WORKSPACE
-          Remove-Item 'src/QatFarm.Windows' -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item 'src/QatFarm.Windows' -ItemType Directory -Force | Out-Null
-          Copy-Item (Join-Path $windowsRoot '*') 'src/QatFarm.Windows' -Recurse -Force
-          Get-ChildItem 'src/QatFarm.Windows' -Directory -Recurse -ErrorAction SilentlyContinue |
+          $targetRoot = '.github/windows-source-2.2.4'
+          Remove-Item $targetRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item $targetRoot -ItemType Directory -Force | Out-Null
+          Get-ChildItem $windowsRoot -Force | ForEach-Object { Copy-Item $_.FullName $targetRoot -Recurse -Force }
+          Get-ChildItem $targetRoot -Directory -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -in @('bin','obj','Release','.vs') } |
             Sort-Object FullName -Descending |
             Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-          if (-not (Test-Path 'src/QatFarm.Windows/QatFarm.Web/QatFarm.Web.csproj')) { throw 'Materialized Windows project missing.' }
+          if (-not (Test-Path "$targetRoot/QatFarm.Web/QatFarm.Web.csproj")) { throw 'Materialized Windows project missing.' }
 
-      - name: Commit materialized Windows source
-        shell: pwsh
-        run: |
-          Set-Location $env:GITHUB_WORKSPACE
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --force 'src/QatFarm.Windows'
-          $status = git status --porcelain -- 'src/QatFarm.Windows'
+          git add --force $targetRoot
+          $status = git status --porcelain -- $targetRoot
           if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) {
-            Write-Host 'No Windows source changes to commit.'
-          } else {
-            git commit -m 'chore: materialize tested Windows 2.2.3 source'
-            git push origin HEAD:feature/windows-voice-2.2.4
+            throw 'Materialized Windows source was not staged.'
           }
+          git commit -m 'chore: materialize tested Windows 2.2.3 source'
+          git push origin HEAD:feature/windows-voice-2.2.4
