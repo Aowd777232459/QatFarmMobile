@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage x:Class="QatFarm.Mobile.MainPage"
+ xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+ xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+ xmlns:components="clr-namespace:QatFarm.Mobile.Components"
+ BackgroundColor="#F4F7F5">
+ <BlazorWebView HostPage="wwwroot/index.html">
+  <BlazorWebView.RootComponents>
+   <RootComponent Selector="#app" ComponentType="{x:Type components:MobileRoot}" />
+  </BlazorWebView.RootComponents>
+ </BlazorWebView>
+</ContentPage>

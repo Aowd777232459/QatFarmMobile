@@ -1,0 +1,68 @@
+@implements IDisposable
+@inject AppSession Session
+@inject NavigationManager Navigation
+@inject LocalSyncService LocalSync
+@inject ZakatNotificationService ZakatNotifications
+
+@if (!Session.IsAuthenticated)
+{
+    <Login OnLoggedIn="HandleLoggedInAsync" />
+}
+else
+{
+    <ErrorBoundary @ref="errorBoundary">
+        <ChildContent>
+            <Router AppAssembly="@typeof(MobileRoot).Assembly">
+                <Found Context="routeData">
+                    <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                    <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+                </Found>
+                <NotFound>
+                    <LayoutView Layout="@typeof(MainLayout)">
+                        <div class="empty-state"><h2>الصفحة غير موجودة</h2></div>
+                    </LayoutView>
+                </NotFound>
+            </Router>
+        </ChildContent>
+        <ErrorContent Context="exception">
+            <div class="login-page">
+                <div class="login-card">
+                    <div class="brand-logo">⚠️</div>
+                    <h1>تعذر فتح الصفحة</h1>
+                    <div class="alert danger">@exception.Message</div>
+                    <button class="btn primary full" @onclick="RecoverAsync">إعادة المحاولة</button>
+                    <button class="btn full" @onclick="Logout">العودة لتسجيل الدخول</button>
+                </div>
+            </div>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    private ErrorBoundary? errorBoundary;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+        LocalSync.Start();
+    }
+
+    private async Task HandleLoggedInAsync() { await ZakatNotifications.RefreshAsync(); await InvokeAsync(StateHasChanged); }
+
+    private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task RecoverAsync()
+    {
+        errorBoundary?.Recover();
+        Navigation.NavigateTo("/", forceLoad: false);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Logout()
+    {
+        Session.Logout();
+        Navigation.NavigateTo("/", forceLoad: false);
+    }
+
+    public void Dispose() => Session.Changed -= OnSessionChanged;
+}

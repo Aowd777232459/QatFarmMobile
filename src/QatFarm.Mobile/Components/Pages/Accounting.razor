@@ -1,0 +1,158 @@
+@page "/accounting"
+@inject QatFarmService Service
+@inject MobilePdfService Pdf
+
+<section class="accounting-hero">
+ <div>
+  <h1>المحاسبة والتحليل</h1>
+ </div>
+</section>
+
+<div class="filter-bar accounting-filter">
+ <InputSelect class="form-control" @bind-Value="farmId">
+  <option value="0">كل المزارع</option>
+  @foreach (var farm in farms) { <option value="@farm.Id">@farm.Name</option> }
+ </InputSelect>
+ <input class="form-control" type="number" min="2000" max="2100" @bind="year" aria-label="السنة" />
+ <div class="filter-actions"><button class="btn primary" @onclick="LoadAsync" disabled="@loading">@(loading ? "جارٍ التحليل..." : "تحليل")</button><button class="btn" @onclick="ExportPdfAsync" disabled="@(loading || exporting)">@(exporting ? "جارٍ التجهيز..." : "PDF")</button></div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+ <div class="alert danger">@error</div>
+}
+
+@if (summary is null && loading)
+{
+ <div class="loading">جارٍ إعداد المركز المالي...</div>
+}
+else if (summary is not null)
+{
+ <div class="accounting-context-line">
+  <span>@summary.FarmName</span><strong>@summary.Year</strong><span>@summary.PostedInvoiceCount فاتورة مرحلة</span>
+ </div>
+
+ @if (summary.OverdueCustomerInvoiceCount > 0 || summary.OverdueCultivationDebtCount > 0)
+ {
+  <div class="finance-warning">
+   <strong>تنبيه مالي يحتاج متابعة</strong>
+   <span>فواتير عملاء متأخرة: @summary.OverdueCustomerInvoiceCount</span>
+   <span>ديون تربية متأخرة: @summary.OverdueCultivationDebtCount</span>
+  </div>
+ }
+
+ <div class="vip-kpi-grid">
+  <article class="vip-kpi sales"><span>إجمالي المبيعات</span><strong>@Money(summary.GrossSales)</strong><small>@summary.PostedInvoiceCount فاتورة</small></article>
+  <article class="vip-kpi collected"><span>المبيعات المحصلة</span><strong>@Money(summary.CollectedSales)</strong><small>@Percent(summary.CollectionPercent) نسبة التحصيل</small></article>
+  <article class="vip-kpi profit"><span>الربح المحاسبي</span><strong>@Money(summary.AccountingProfit)</strong><small>@Percent(summary.NetMarginPercent) هامش الربح</small></article>
+  <article class="vip-kpi cash"><span>صافي التدفق النقدي</span><strong>@Money(summary.NetCashFlow)</strong><small>داخل @Money(summary.CashInflow) · خارج @Money(summary.CashOutflow)</small></article>
+  <article class="vip-kpi receivable"><span>ذمم العملاء</span><strong>@Money(summary.CustomerReceivables)</strong><small>مبالغ واجبة التحصيل</small></article>
+  <article class="vip-kpi payable"><span>التزامات التربية</span><strong>@Money(summary.CultivationPayables)</strong><small>مبالغ واجبة السداد</small></article>
+  <article class="vip-kpi expenses"><span>إجمالي التكاليف</span><strong>@Money(summary.InvoiceExpenses + summary.CultivationExpenses)</strong><small>@Percent(summary.CostPercent) مع الزكاة من المبيعات</small></article>
+  <article class="vip-kpi zakat"><span>الزكاة المستحقة</span><strong>@Money(summary.ZakatAccrued)</strong><small>المدفوع في الفترة @Money(summary.ZakatPaid)</small></article>
+ </div>
+
+ <section class="finance-panel ratio-panel">
+  <div class="finance-section-head"><div><span>مؤشرات الأداء</span></div></div>
+  <div class="ratio-grid">
+   <div class="ratio-item"><div><span>التحصيل</span><b>@Percent(summary.CollectionPercent)</b></div><div class="ratio-track"><i style="width:@Progress(summary.CollectionPercent)"></i></div></div>
+   <div class="ratio-item"><div><span>هامش الربح</span><b>@Percent(summary.NetMarginPercent)</b></div><div class="ratio-track profit"><i style="width:@Progress(summary.NetMarginPercent)"></i></div></div>
+   <div class="ratio-item"><div><span>نسبة التكلفة</span><b>@Percent(summary.CostPercent)</b></div><div class="ratio-track cost"><i style="width:@Progress(summary.CostPercent)"></i></div></div>
+  </div>
+ </section>
+
+ <section class="finance-panel">
+  <div class="finance-section-head"><div><span>الأداء الشهري</span></div></div>
+  <div class="month-performance">
+  @foreach (var month in summary.Months)
+  {
+   <div class="month-row">
+    <span class="month-name">@month.MonthName</span>
+    <div class="month-bars">
+     <div class="month-bar sales" style="width:@BarWidth(month.Sales)"><span>@ShortMoney(month.Sales)</span></div>
+     <div class="month-bar costs" style="width:@BarWidth(month.Costs)"><span>@ShortMoney(month.Costs)</span></div>
+    </div>
+    <strong class="month-net @(month.NetProfit < 0 ? "negative" : "")">@ShortMoney(month.NetProfit)</strong>
+   </div>
+  }
+  </div>
+  <div class="chart-legend"><span class="sales">المبيعات</span><span class="costs">التكاليف</span><span>العمود الأخير: صافي الربح</span></div>
+ </section>
+
+ <section class="finance-panel">
+  <div class="finance-section-head"><div><span>مقارنة المزارع</span></div></div>
+  <div class="vip-table-wrap">
+   <table class="vip-table">
+    <thead><tr><th>المزرعة</th><th>المبيعات</th><th>التكاليف</th><th>الصافي</th><th>الهامش</th><th>لنا</th><th>علينا</th></tr></thead>
+    <tbody>
+    @foreach (var row in summary.Farms)
+    {
+     <tr><td><strong>@row.FarmName</strong></td><td>@Money(row.Sales)</td><td>@Money(row.Costs)</td><td class="@(row.NetProfit < 0 ? "negative" : "positive")">@Money(row.NetProfit)</td><td>@Percent(row.MarginPercent)</td><td>@Money(row.Receivables)</td><td>@Money(row.Payables)</td></tr>
+    }
+    </tbody>
+   </table>
+  </div>
+  @if (summary.Farms.Count == 0) { <div class="empty-state compact">لا توجد حركة مالية في الفترة المحددة.</div> }
+ </section>
+
+ <section class="finance-panel">
+  <div class="finance-section-head"><div><span>سجل الحركة النقدية</span></div></div>
+  <div class="cash-ledger">
+  @foreach (var movement in summary.RecentCashMovements)
+  {
+   <article class="cash-entry">
+    <div class="cash-kind @(movement.Inflow > 0 ? "in" : "out")">@(movement.Inflow > 0 ? "قبض" : "صرف")</div>
+    <div class="grow"><strong>@movement.Kind · @movement.Description</strong><small>@movement.Date.ToString("yyyy/MM/dd HH:mm") · @movement.FarmName · @movement.DocumentNumber</small></div>
+    <div class="cash-value @(movement.Inflow > 0 ? "in" : "out")">@(movement.Inflow > 0 ? "+" : "-") @Money(movement.Inflow > 0 ? movement.Inflow : movement.Outflow)</div>
+   </article>
+  }
+  </div>
+  @if (summary.RecentCashMovements.Count == 0) { <div class="empty-state compact">لا توجد حركة نقدية في الفترة المحددة.</div> }
+ </section>
+}
+
+@code {
+ private List<Farm> farms = [];
+ private AccountingCenterSummary? summary;
+ private int year = DateTime.Today.Year;
+ private long farmId;
+ private bool loading;
+ private bool exporting;
+ private string? error;
+
+ protected override async Task OnInitializedAsync()
+ {
+  farms = await Service.GetFarmsAsync(true);
+  await LoadAsync();
+ }
+
+ private async Task LoadAsync()
+ {
+  if (loading) return;
+  loading = true;
+  error = null;
+  try { summary = await Service.GetAccountingCenterAsync(year, farmId == 0 ? null : farmId); }
+  catch (Exception ex) { error = ex.Message; }
+ finally { loading = false; }
+ }
+
+ private async Task ExportPdfAsync()
+ {
+  if (exporting) return;
+  exporting = true; error = null;
+  try
+  {
+   var path = await Pdf.CreateExecutiveAccountingPdfAsync(farmId == 0 ? null : farmId, year);
+   await Pdf.SharePdfAsync(path, "التقرير المحاسبي");
+  }
+  catch (Exception ex) { error = ex.Message; }
+  finally { exporting = false; }
+ }
+
+ private decimal MaxChartValue => Math.Max(1m, summary?.Months.Max(x => Math.Max(x.Sales, x.Costs)) ?? 1m);
+ private string BarWidth(decimal value) => $"{Math.Clamp(value / MaxChartValue * 100m, value == 0 ? 0m : 3m, 100m):0.#}%";
+ private static string Progress(decimal value) => $"{Math.Clamp(value, 0m, 100m):0.#}%";
+ private static string Money(decimal value) => $"{value:N2} ر.ي";
+ private static string ShortMoney(decimal value) => Math.Abs(value) >= 1_000_000m ? $"{value / 1_000_000m:0.#}م" : Math.Abs(value) >= 1_000m ? $"{value / 1_000m:0.#}أ" : $"{value:0}";
+ private static string Percent(decimal value) => $"{value:N1}%";
+}

@@ -1,0 +1,45 @@
+@page "/creditors"
+@inject QatFarmService Service
+@inject AppSession Session
+
+<h1>الدائنون والموردون</h1>
+<div class="panel">
+ <EditForm Model="model" OnValidSubmit="SaveAsync">
+  <div class="form-grid">
+   <div><label>الاسم</label><InputText class="form-control" @bind-Value="model.Name" /></div>
+   <div><label>الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
+   <div><label>العنوان</label><InputText class="form-control" @bind-Value="model.Address" /></div>
+  </div>
+  <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
+  <div class="actions"><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="Reset">جديد</button></div>
+ </EditForm>
+ @if (!string.IsNullOrEmpty(message)) { <div class="alert @(ok?"success":"danger")">@message</div> }
+</div>
+<div class="card-list">
+@foreach (var x in rows)
+{
+ <div class="data-card">
+  <div><strong>@x.Name</strong><small>@x.Phone — @x.Address</small></div>
+  @if (Session.IsAdmin)
+  {
+   <div class="actions">
+    <button class="btn small" @onclick="() => Edit(x)">تعديل</button>
+    <button class="btn small danger" @onclick="() => DeleteAsync(x.Id)">حذف</button>
+   </div>
+  }
+  else
+  {
+   <div class="actions"><button class="btn small locked-btn" disabled>🔒 التعديل للمدير</button><button class="btn small locked-btn" disabled>🔒 الحذف للمدير</button></div>
+  }
+ </div>
+}
+</div>
+@code {
+ private List<Creditor> rows=[]; private Creditor model=new(); private string? message; private bool ok;
+ protected override async Task OnInitializedAsync()=>await LoadAsync();
+ private async Task LoadAsync()=>rows=await Service.GetCreditorsAsync();
+ private async Task SaveAsync(){try{await Service.SaveCreditorAsync(model);ok=true;message="تم الحفظ.";Reset();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private void Edit(Creditor x)=>model=new Creditor{Id=x.Id,Name=x.Name,Phone=x.Phone,Address=x.Address,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt};
+ private void Reset()=>model=new Creditor();
+ private async Task DeleteAsync(long id){try{await Service.DeleteCreditorAsync(id);await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+}

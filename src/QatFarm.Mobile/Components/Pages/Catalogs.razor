@@ -1,0 +1,95 @@
+@page "/catalogs"
+@inject QatFarmService Service
+@inject AppSession Session
+
+<div class="page-head"><h1>القوائم المحاسبية</h1><span class="admin-chip">إدارة الأصناف</span></div>
+
+@if (!Session.IsAdmin)
+{
+ <div class="permission-lock-card">
+  <span>🔒</span><div><strong>هذه العملية للمدير فقط</strong></div>
+ </div>
+}
+else
+{
+ @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
+ <div class="catalog-grid">
+  <section class="finance-panel catalog-panel">
+   <div class="finance-section-head"><div><span>أنواع القات</span></div></div>
+   <EditForm Model="qatModel" OnValidSubmit="SaveQatAsync">
+    <div class="catalog-editor"><InputText class="form-control" @bind-Value="qatModel.Name" placeholder="اسم نوع القات" /><label class="check"><InputCheckbox @bind-Value="qatModel.IsActive" /> فعال</label><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="ResetQat">جديد</button></div>
+   </EditForm>
+   <div class="catalog-list">
+   @foreach (var item in qatTypes)
+   {
+    <button class="catalog-item @(item.IsActive ? "" : "inactive")" @onclick="() => EditQat(item)"><span>@item.Name</span><small>@(item.IsActive ? "فعال" : "موقوف") · تعديل</small></button>
+   }
+   </div>
+  </section>
+
+  <section class="finance-panel catalog-panel">
+   <div class="finance-section-head"><div><span>مصروفات الفاتورة</span></div></div>
+   <EditForm Model="dailyModel" OnValidSubmit="SaveDailyAsync">
+    <div class="catalog-editor"><InputText class="form-control" @bind-Value="dailyModel.Name" placeholder="اسم نوع المصروف" /><label class="check"><InputCheckbox @bind-Value="dailyModel.IsActive" /> فعال</label><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="ResetDaily">جديد</button></div>
+   </EditForm>
+   <div class="catalog-list">
+   @foreach (var item in dailyTypes)
+   {
+    <button class="catalog-item @(item.IsActive ? "" : "inactive")" @onclick="() => EditDaily(item)"><span>@item.Name</span><small>@(item.IsActive ? "فعال" : "موقوف") · تعديل</small></button>
+   }
+   </div>
+  </section>
+
+  <section class="finance-panel catalog-panel">
+   <div class="finance-section-head"><div><span>خسائر التربية</span></div></div>
+   <EditForm Model="cultivationModel" OnValidSubmit="SaveCultivationAsync">
+    <div class="catalog-editor"><InputText class="form-control" @bind-Value="cultivationModel.Name" placeholder="اسم نوع خسارة التربية" /><label class="check"><InputCheckbox @bind-Value="cultivationModel.IsActive" /> فعال</label><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="ResetCultivation">جديد</button></div>
+   </EditForm>
+   <div class="catalog-list">
+   @foreach (var item in cultivationTypes)
+   {
+    <button class="catalog-item @(item.IsActive ? "" : "inactive")" @onclick="() => EditCultivation(item)"><span>@item.Name</span><small>@(item.IsActive ? "فعال" : "موقوف") · تعديل</small></button>
+   }
+   </div>
+  </section>
+ </div>
+}
+
+@code {
+ private List<QatType> qatTypes = [];
+ private List<DailyExpenseType> dailyTypes = [];
+ private List<CultivationExpenseType> cultivationTypes = [];
+ private QatType qatModel = new() { IsActive = true };
+ private DailyExpenseType dailyModel = new() { IsActive = true };
+ private CultivationExpenseType cultivationModel = new() { IsActive = true };
+ private string? message;
+ private bool ok;
+
+ protected override async Task OnInitializedAsync()
+ {
+  if (Session.IsAdmin) await LoadAsync();
+ }
+
+ private async Task LoadAsync()
+ {
+  qatTypes = await Service.GetQatTypesAsync(false);
+  dailyTypes = await Service.GetDailyExpenseTypesAsync(false);
+  cultivationTypes = await Service.GetCultivationTypesAsync(false);
+ }
+
+ private async Task SaveQatAsync() { await SaveAsync(() => Service.SaveQatTypeAsync(qatModel), ResetQat); }
+ private async Task SaveDailyAsync() { await SaveAsync(() => Service.SaveDailyExpenseTypeAsync(dailyModel), ResetDaily); }
+ private async Task SaveCultivationAsync() { await SaveAsync(() => Service.SaveCultivationExpenseTypeAsync(cultivationModel), ResetCultivation); }
+ private async Task SaveAsync(Func<Task> action, Action reset)
+ {
+  try { await action(); reset(); await LoadAsync(); ok = true; message = "تم حفظ القائمة وتحديث القوائم المنسدلة."; }
+  catch (Exception ex) { ok = false; message = ex.Message; }
+ }
+
+ private void EditQat(QatType x) => qatModel = new QatType { Id = x.Id, Name = x.Name, IsActive = x.IsActive, IsDeleted = x.IsDeleted, CreatedAt = x.CreatedAt };
+ private void EditDaily(DailyExpenseType x) => dailyModel = new DailyExpenseType { Id = x.Id, Name = x.Name, IsActive = x.IsActive, IsDeleted = x.IsDeleted, CreatedAt = x.CreatedAt };
+ private void EditCultivation(CultivationExpenseType x) => cultivationModel = new CultivationExpenseType { Id = x.Id, Name = x.Name, IsActive = x.IsActive, IsDeleted = x.IsDeleted, CreatedAt = x.CreatedAt };
+ private void ResetQat() => qatModel = new QatType { IsActive = true };
+ private void ResetDaily() => dailyModel = new DailyExpenseType { IsActive = true };
+ private void ResetCultivation() => cultivationModel = new CultivationExpenseType { IsActive = true };
+}

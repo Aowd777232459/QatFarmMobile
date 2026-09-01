@@ -1,0 +1,32 @@
+@inherits LayoutComponentBase
+@inject AppSession Session
+@inject NavigationManager Navigation
+
+<div class="app-shell">
+ <div class="awad-watermark" aria-hidden="true"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
+ <header class="topbar accounting-topbar">
+  <div class="brand-mini">
+   <img src="images/app_icon.png" alt="" />
+   <div><strong>نظام زراعي عواد سوفت</strong><small>@Session.CurrentUser?.FullName · @RoleText()</small></div>
+  </div>
+  <button class="icon-btn" @onclick="Logout">خروج</button>
+ </header>
+ <main class="content">@Body</main>
+ <nav class="bottom-nav accounting-nav">
+  <NavLink href="/" Match="NavLinkMatch.All"><span class="nav-glyph">⌂</span><small>الرئيسية</small></NavLink>
+  <NavLink href="/accounting"><span class="nav-glyph">▥</span><small>المحاسبة</small></NavLink>
+  <NavLink class="center-nav-action" href="/invoice/new"><span>＋</span><small>فاتورة</small></NavLink>
+  <NavLink href="/customers"><span class="nav-glyph">◎</span><small>العملاء</small></NavLink>
+  <NavLink href="/more"><span class="nav-glyph">≡</span><small>المزيد</small></NavLink>
+ </nav>
+</div>
+
+@code {
+    private void Logout() { Session.Logout(); Navigation.NavigateTo("/"); }
+    private string RoleText() => Session.CurrentUser?.Role switch
+    {
+        UserRole.Administrator => "مدير",
+        UserRole.Accountant => "محاسب",
+        _ => "موظف إضافة"
+    };
+}

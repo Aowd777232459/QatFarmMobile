@@ -1,0 +1,22 @@
+@page "/audit"
+@inject QatFarmService Service
+@inject AppSession Session
+
+@if(!Session.IsAdmin)
+{
+ <div class="alert danger">هذه الصفحة للمدير فقط.</div>
+}
+else
+{
+ <h1>سجل التدقيق</h1>
+ <div class="card-list">
+ @foreach(var x in rows)
+ {
+  <div class="data-card"><div class="grow"><strong>@x.Action — @x.EntityName</strong><small>@x.UserName | @x.ActionDate.ToString("yyyy/MM/dd HH:mm") | رقم @x.EntityId</small></div></div>
+ }
+ </div>
+}
+@code {
+ private List<AuditLog> rows=[];
+ protected override async Task OnInitializedAsync(){if(Session.IsAdmin)rows=await Service.GetAuditLogsAsync();}
+}

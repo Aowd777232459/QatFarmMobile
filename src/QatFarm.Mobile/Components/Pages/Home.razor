@@ -1,0 +1,68 @@
+@page "/"
+@inject QatFarmService Service
+@inject AppSession Session
+
+<div class="page-head accounting-page-head">
+ <div><h1>لوحة التحكم</h1></div>
+ <a class="btn primary compact" href="/accounting">المركز المالي</a>
+</div>
+
+<section class="home-qat-hero">
+ <img src="images/qat_vip_hero.jpg" alt="مزرعة قات ومنتج زراعي" />
+ <div class="home-qat-shade"></div>
+ <div class="home-qat-copy"><span>AWAD SOFT</span><h2>نظام زراعي عواد سوفت</h2></div>
+ <div class="home-qat-watermark"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+ <div class="alert danger">@error</div>
+ <button class="btn primary" @onclick="LoadAsync" disabled="@loading">إعادة المحاولة</button>
+}
+
+@if (summary is null)
+{
+ <div class="loading">جارٍ التحميل...</div>
+}
+else
+{
+ <div class="stat-grid accounting-stats">
+  <div class="stat-card"><span>مبيعات اليوم</span><strong>@Money(summary.SalesToday)</strong></div>
+  <div class="stat-card"><span>مبيعات السنة</span><strong>@Money(summary.SalesYear)</strong></div>
+  <div class="stat-card success"><span>صافي السنة</span><strong>@Money(summary.NetYear)</strong></div>
+  <div class="stat-card warning"><span>ديون العملاء</span><strong>@Money(summary.CustomerDebts)</strong></div>
+  <div class="stat-card danger"><span>ديون التربية</span><strong>@Money(summary.CultivationDebts)</strong></div>
+  <div class="stat-card zakat"><span>الزكاة المعلقة</span><strong>@Money(summary.PendingZakat)</strong></div>
+ </div>
+ @if (summary.OverdueDebtCount > 0)
+ {
+  <div class="alert danger">ديون متأخرة: @summary.OverdueDebtCount</div>
+ }
+}
+
+<h2 class="section-title">العمليات</h2>
+<div class="quick-grid accounting-actions">
+ <a class="quick-card" href="/invoice/new"><span class="quick-icon">＋</span><b>فاتورة</b></a>
+ <a class="quick-card" href="/invoices"><span class="quick-icon">▤</span><b>الفواتير</b></a>
+ <a class="quick-card" href="/cultivation"><span class="quick-icon">▦</span><b>التربية</b></a>
+ <a class="quick-card vip" href="/accounting"><span class="quick-icon">◫</span><b>المحاسبة</b></a>
+ <a class="quick-card" href="/reports"><span class="quick-icon">▥</span><b>التقارير</b></a>
+ <a class="quick-card" href="/farms"><span class="quick-icon">⌂</span><b>المزارع</b></a>
+</div>
+
+@code {
+ private DashboardSummary? summary;
+ private string? error;
+ private bool loading;
+
+ protected override Task OnInitializedAsync() => LoadAsync();
+ private async Task LoadAsync()
+ {
+  if (loading) return;
+  loading = true; error = null;
+  try { summary = await Service.GetDashboardAsync(); }
+  catch (Exception ex) { summary = new DashboardSummary(); error = ex.Message; }
+  finally { loading = false; }
+ }
+ private static string Money(decimal value) => $"{value:N2} ر.ي";
+}

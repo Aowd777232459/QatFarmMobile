@@ -1,0 +1,54 @@
+@page "/farms"
+@inject QatFarmService Service
+@inject AppSession Session
+
+<div class="page-head"><h1>المزارع</h1></div>
+<div class="panel">
+ <h2>@(model.Id == 0 ? "إضافة مزرعة" : "تعديل المزرعة")</h2>
+ <EditForm Model="model" OnValidSubmit="SaveAsync">
+  <div class="form-grid">
+   <div><label>اسم المزرعة</label><InputText class="form-control" @bind-Value="model.Name" /></div>
+   <div><label>اسم المالك</label><InputText class="form-control" @bind-Value="model.OwnerName" /></div>
+   <div><label>الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
+   <div><label>الموقع</label><InputText class="form-control" @bind-Value="model.Location" /></div>
+  </div>
+  <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
+  <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" @onclick="Reset">جديد</button></div>
+ </EditForm>
+ @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
+</div>
+<div class="card-list">
+@foreach (var farm in farms)
+{
+ <div class="data-card farm-card">
+  <div class="grow"><strong>@farm.Name</strong><small>@farm.Location — @farm.Phone</small></div>
+  @if (Session.IsAdmin)
+  {
+   <div class="actions">
+    <button class="btn small" @onclick="() => Edit(farm)">تعديل</button>
+    <button class="btn small danger" @onclick="() => DeleteAsync(farm.Id)">حذف</button>
+   </div>
+  }
+  else
+  {
+   <div class="actions"><button class="btn small locked-btn" disabled>🔒 التعديل للمدير</button><button class="btn small locked-btn" disabled>🔒 الحذف للمدير</button></div>
+  }
+ </div>
+}
+</div>
+@code {
+ private List<Farm> farms = [];
+ private Farm model = new();
+ private string? message;
+ private bool ok;
+ protected override async Task OnInitializedAsync() => await LoadAsync();
+ private async Task LoadAsync() => farms = await Service.GetFarmsAsync();
+ private async Task SaveAsync()
+ {
+  try { await Service.SaveFarmAsync(model); ok=true; message="تم الحفظ."; Reset(); await LoadAsync(); }
+  catch(Exception ex){ok=false;message=ex.Message;}
+ }
+ private void Edit(Farm x) => model = new Farm { Id=x.Id,Name=x.Name,OwnerName=x.OwnerName,Phone=x.Phone,Location=x.Location,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt };
+ private void Reset() => model = new Farm();
+ private async Task DeleteAsync(long id){try{await Service.DeleteFarmAsync(id);await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+}

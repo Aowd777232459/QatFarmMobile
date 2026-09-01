@@ -1,0 +1,228 @@
+@page "/invoice/new"
+@page "/invoice/{Id:long}"
+@inject QatFarmService Service
+@inject NavigationManager Nav
+
+<div class="invoice-page-head">
+    <div>
+        <h1>@(Id == 0 ? "إنشاء فاتورة بيع" : "تعديل فاتورة البيع")</h1>
+    </div>
+    <div class="invoice-doc-chip">
+        <span>رقم المستند</span>
+        <strong>@(Id == 0 ? "تلقائي عند الحفظ" : (string.IsNullOrWhiteSpace(model.InvoiceNumber) ? $"#{Id}" : model.InvoiceNumber))</strong>
+    </div>
+</div>
+
+@if (!loaded)
+{
+    <div class="loading">جارٍ التحميل...</div>
+}
+else
+{
+<EditForm Model="model" OnValidSubmit="SaveAsync">
+    <div class="accounting-invoice-shell">
+        <section class="invoice-paper-card invoice-master-data">
+            <div class="invoice-card-title">
+                <div>
+                    <span class="step-no">01</span>
+                    <div><strong>بيانات الفاتورة</strong></div>
+                </div>
+                <span class="invoice-status-badge @(EffectiveDue == 0 && model.GrossAmount > 0 ? "paid" : EffectivePaid > 0 ? "partial" : "unpaid")">
+                    @(EffectiveDue == 0 && model.GrossAmount > 0 ? "مدفوعة" : EffectivePaid > 0 ? "مدفوعة جزئياً" : "غير مدفوعة")
+                </span>
+            </div>
+
+            <div class="invoice-master-grid">
+                <div class="field-block span-2">
+                    <label>المزرعة <em>*</em></label>
+                    <InputSelect class="form-control" @bind-Value="model.FarmId">
+                        <option value="0">اختر المزرعة</option>
+                        @foreach (var f in farms) { <option value="@f.Id">@f.Name</option> }
+                    </InputSelect>
+                </div>
+                <div class="field-block span-2">
+                    <label>العميل</label>
+                    <InputSelect class="form-control" @bind-Value="model.CustomerId" @bind-Value:after="CustomerChanged">
+                        <option value="">بيع نقدي / بدون حساب عميل</option>
+                        @foreach (var c in customers) { <option value="@c.Id">@c.Name</option> }
+                    </InputSelect>
+                </div>
+                <div class="field-block">
+                    <label>تاريخ الفاتورة</label>
+                    <InputDate class="form-control" @bind-Value="model.InvoiceDate" />
+                </div>
+                <div class="field-block">
+                    <label>تاريخ الاستحقاق</label>
+                    <InputDate class="form-control" @bind-Value="model.PaymentDueDate" disabled="@(!model.CustomerId.HasValue)" />
+                </div>
+                <div class="field-block">
+                    <label>اسم المشتري</label>
+                    <InputText class="form-control" @bind-Value="model.BuyerName"  />
+                </div>
+                <div class="field-block">
+                    <label>هاتف المشتري</label>
+                    <InputText class="form-control" @bind-Value="model.BuyerPhone"  />
+                </div>
+            </div>
+            @if (!model.CustomerId.HasValue) { <div class="inline-warning">البيع لغير عميل مسجل نقدي فقط، ويُثبت النظام كامل قيمة الفاتورة كمدفوعة تلقائيًا.</div> }
+        </section>
+
+        <section class="invoice-paper-card">
+            <div class="invoice-card-title">
+                <div>
+                    <span class="step-no">02</span>
+                    <div><strong>أصناف الفاتورة</strong></div>
+                </div>
+                <button type="button" class="btn success compact" @onclick="AddItem">＋ إضافة صنف</button>
+            </div>
+
+            <div class="accounting-table-wrap">
+                <div class="accounting-table invoice-items-table">
+                    <div class="table-row table-head">
+                        <div>#</div><div>الصنف</div><div>الكمية</div><div>سعر الوحدة</div><div>الإجمالي</div><div></div>
+                    </div>
+                    @for (var i = 0; i < model.Items.Count; i++)
+                    {
+                        var index = i;
+                        <div class="table-row">
+                            <div class="row-number">@(index + 1)</div>
+                            <div>
+                                <InputSelect class="form-control table-input" @bind-Value="model.Items[index].QatTypeId">
+                                    <option value="0">اختر نوع القات</option>
+                                    @foreach (var q in qatTypes) { <option value="@q.Id">@q.Name</option> }
+                                </InputSelect>
+                            </div>
+                            <div><InputNumber class="form-control table-input numeric" @bind-Value="model.Items[index].Quantity" /></div>
+                            <div><InputNumber class="form-control table-input numeric" @bind-Value="model.Items[index].UnitPrice" /></div>
+                            <div class="line-total">@model.Items[index].Total.ToString("N2")</div>
+                            <div><button type="button" class="icon-danger-btn" title="حذف الصنف" @onclick="() => RemoveItem(index)">×</button></div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="table-footer-total"><span>إجمالي المبيعات</span><strong>@model.GrossAmount.ToString("N2") <small>ريال</small></strong></div>
+        </section>
+
+        <section class="invoice-paper-card">
+            <div class="invoice-card-title">
+                <div>
+                    <span class="step-no">03</span>
+                    <div><strong>مصروفات الفاتورة</strong></div>
+                </div>
+                <button type="button" class="btn compact" @onclick="AddExpense">＋ إضافة مصروف</button>
+            </div>
+
+            @if (model.Expenses.Count == 0)
+            {
+                <div class="invoice-empty-row">لا توجد مصروفات</div>
+            }
+            else
+            {
+                <div class="accounting-table-wrap">
+                    <div class="accounting-table expense-table">
+                        <div class="table-row table-head"><div>#</div><div>نوع المصروف</div><div>المبلغ</div><div>البيان</div><div></div></div>
+                        @for (var i = 0; i < model.Expenses.Count; i++)
+                        {
+                            var index = i;
+                            <div class="table-row">
+                                <div class="row-number">@(index + 1)</div>
+                                <div>
+                                    <InputSelect class="form-control table-input" @bind-Value="model.Expenses[index].ExpenseTypeId">
+                                        <option value="0">اختر النوع</option>
+                                        @foreach (var t in expenseTypes) { <option value="@t.Id">@t.Name</option> }
+                                    </InputSelect>
+                                </div>
+                                <div><InputNumber class="form-control table-input numeric" @bind-Value="model.Expenses[index].Amount" /></div>
+                                <div><InputText class="form-control table-input" @bind-Value="model.Expenses[index].Notes" placeholder="البيان" /></div>
+                                <div><button type="button" class="icon-danger-btn" @onclick="() => RemoveExpense(index)">×</button></div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </section>
+
+        <div class="invoice-bottom-grid">
+            <section class="invoice-paper-card invoice-payment-card">
+                <div class="invoice-card-title simple">
+                    <div><span class="step-no">04</span><div><strong>الدفع</strong></div></div>
+                </div>
+                <div class="form-grid">
+                    <div><label>نسبة الزكاة %</label><InputNumber class="form-control" @bind-Value="model.ZakatPercent" /></div>
+                    <div><label>المبلغ المدفوع</label>@if (model.CustomerId.HasValue) { <InputNumber class="form-control" @bind-Value="model.AmountPaid" /> } else { <input class="form-control" value="@model.GrossAmount.ToString("N2")" disabled /> }</div>
+                    <div>
+                        <label>طريقة الدفع</label>
+                        <InputSelect class="form-control" @bind-Value="model.PaymentMethod" disabled="@(!model.CustomerId.HasValue)">
+                            <option value="@PaymentMethod.Cash">نقدي</option>
+                            <option value="@PaymentMethod.Transfer">تحويل</option>
+                            <option value="@PaymentMethod.Credit">آجل</option>
+                            <option value="@PaymentMethod.Mixed">مختلط</option>
+                        </InputSelect>
+                    </div>
+                </div>
+                <label>ملاحظات الفاتورة</label>
+                <InputTextArea class="form-control" @bind-Value="model.Notes"  />
+            </section>
+
+            <aside class="invoice-summary-card">
+                <div class="summary-head"><span>الملخص المالي</span></div>
+                <div class="summary-line"><span>إجمالي المبيعات</span><strong>@model.GrossAmount.ToString("N2")</strong></div>
+                <div class="summary-line negative"><span>الزكاة</span><strong>- @model.ZakatAmount.ToString("N2")</strong></div>
+                <div class="summary-line negative"><span>مصروفات الفاتورة</span><strong>- @model.TotalExpenses.ToString("N2")</strong></div>
+                <div class="summary-line net"><span>صافي الفاتورة</span><strong>@model.NetAmount.ToString("N2")</strong></div>
+                <div class="summary-line"><span>المبلغ المدفوع</span><strong>@EffectivePaid.ToString("N2")</strong></div>
+                <div class="summary-due @(EffectiveDue > 0 ? "has-due" : "paid")">
+                    <span>المتبقي للتحصيل</span><strong>@EffectiveDue.ToString("N2")</strong>
+                </div>
+            </aside>
+        </div>
+
+        @if (!string.IsNullOrEmpty(message)) { <div class="alert danger">@message</div> }
+        <div class="invoice-submit-bar">
+            <button type="button" class="btn ghost" @onclick="Back">إلغاء</button>
+            <button class="btn primary invoice-save-btn">✓ حفظ واعتماد الفاتورة</button>
+        </div>
+    </div>
+</EditForm>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+    private InvoiceEditorModel model = new();
+    private List<Farm> farms = [];
+    private List<Customer> customers = [];
+    private List<QatType> qatTypes = [];
+    private List<DailyExpenseType> expenseTypes = [];
+    private bool loaded;
+    private string? message;
+    private decimal EffectivePaid => model.CustomerId.HasValue ? model.AmountPaid : model.GrossAmount;
+    private decimal EffectiveDue => Math.Max(0, model.GrossAmount - EffectivePaid);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        farms = await Service.GetFarmsAsync(true);
+        customers = await Service.GetCustomerLookupsAsync();
+        qatTypes = await Service.GetQatTypesAsync();
+        expenseTypes = await Service.GetDailyExpenseTypesAsync();
+        model = Id == 0 ? new InvoiceEditorModel() : await Service.GetInvoiceEditorAsync(Id);
+        loaded = true;
+    }
+
+    private void AddItem() => model.Items.Add(new());
+    private void RemoveItem(int i) { if (model.Items.Count > 1) model.Items.RemoveAt(i); }
+    private void AddExpense() => model.Expenses.Add(new());
+    private void CustomerChanged()
+    {
+        if (model.CustomerId.HasValue) return;
+        model.PaymentMethod = PaymentMethod.Cash;
+        model.PaymentDueDate = null;
+        model.AmountPaid = model.GrossAmount;
+    }
+    private void RemoveExpense(int i) => model.Expenses.RemoveAt(i);
+    private async Task SaveAsync()
+    {
+        try { await Service.SaveInvoiceAsync(model); Nav.NavigateTo("/invoices"); }
+        catch (Exception ex) { message = ex.Message; }
+    }
+    private void Back() => Nav.NavigateTo("/invoices");
+}

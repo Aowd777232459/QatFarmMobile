@@ -1,0 +1,85 @@
+@inject AppSession Session
+
+<div class="login-page">
+ <div class="awad-watermark login-watermark" aria-hidden="true"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
+ <div class="login-card glass-card">
+  <div class="brand-mark-wrap"><img class="brand-mark" src="images/app_icon.png" alt="" /></div>
+  <div class="login-brand-copy"><h1>نظام زراعي عواد سوفت</h1></div>
+
+  @if (!ready)
+  {
+   <div class="loading">جارٍ التجهيز...</div>
+  }
+  else if (!hasUsers || needsCodeSetup)
+  {
+   <EditForm Model="setup" OnValidSubmit="SetupAsync">
+    <label>رمز دخول المدير</label>
+    <InputText class="form-control access-code-input" type="password" maxlength="6" @bind-Value="setup.AccessCode" autocomplete="new-password" />
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الحفظ..." : "حفظ الرمز والدخول")</button>
+   </EditForm>
+  }
+  else
+  {
+   <EditForm Model="model" OnValidSubmit="LoginAsync">
+    <label>رمز الدخول</label>
+    <InputText class="form-control access-code-input" type="password" maxlength="6" @bind-Value="model.AccessCode" autocomplete="current-password" />
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الدخول..." : "دخول")</button>
+   </EditForm>
+  }
+ </div>
+</div>
+
+@code {
+ [Parameter] public EventCallback OnLoggedIn { get; set; }
+ private readonly LoginModel model = new();
+ private readonly FirstRunAdminModel setup = new();
+ private string? error;
+ private bool busy;
+ private bool ready;
+ private bool hasUsers;
+ private bool needsCodeSetup;
+
+ protected override async Task OnInitializedAsync()
+ {
+  try
+  {
+   hasUsers = await Session.HasUsersAsync();
+   needsCodeSetup = hasUsers && await Session.NeedsAccessCodeSetupAsync();
+  }
+  catch (Exception ex) { Console.Error.WriteLine($"QATFARM_STARTUP_ERROR {ex}"); error = $"تعذر تجهيز قاعدة البيانات: {ex.Message}"; }
+  finally { ready = true; }
+  if (string.IsNullOrWhiteSpace(error)) Console.WriteLine("QATFARM_STARTUP_OK");
+ }
+
+ private async Task SetupAsync()
+ {
+  if (busy) return;
+  busy = true; error = null;
+  try
+  {
+   var result = hasUsers
+    ? await Session.SetupExistingAdministratorAccessCodeAsync(setup.AccessCode)
+    : await Session.CreateFirstAdministratorAsync(setup);
+   if (!result.Success) { error = result.Message; return; }
+   await OnLoggedIn.InvokeAsync();
+  }
+  catch (Exception ex) { error = $"تعذر حفظ رمز الدخول: {ex.Message}"; }
+  finally { busy = false; }
+ }
+
+ private async Task LoginAsync()
+ {
+  if (busy) return;
+  busy = true; error = null;
+  try
+  {
+   var result = await Session.LoginAsync(model.AccessCode);
+   if (!result.Success) { error = result.Message; return; }
+   await OnLoggedIn.InvokeAsync();
+  }
+  catch (Exception ex) { error = $"تعذر فتح الواجهة: {ex.Message}"; }
+  finally { busy = false; }
+ }
+}

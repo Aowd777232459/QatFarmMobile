@@ -1,0 +1,79 @@
+@page "/invoices"
+@inject QatFarmService Service
+@inject MobilePdfService Pdf
+@inject AppSession Session
+@inject NavigationManager Nav
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<div class="invoice-page-head">
+ <div><h1>الفواتير</h1></div>
+ <button class="btn primary" @onclick="NewInvoice">＋ فاتورة جديدة</button>
+</div>
+
+<div class="filter-bar invoice-filter-bar">
+ <InputSelect class="form-control" @bind-Value="farmFilter">
+  <option value="0">كل المزارع</option>
+  @foreach(var f in farms){<option value="@f.Id">@f.Name</option>}
+ </InputSelect>
+ <input class="form-control" type="number" @bind="year" aria-label="السنة" />
+ <InputSelect class="form-control" @bind-Value="month">
+  <option value="0">كل السنة</option>
+  @for(var m=1;m<=12;m++){<option value="@m">@MonthName(m)</option>}
+ </InputSelect>
+ <button class="btn" @onclick="LoadAsync">عرض</button>
+ <button class="btn primary" @onclick="PrintMonthAsync" disabled="@(month==0 || exportingMonth)">@(exportingMonth?"جارٍ التجهيز...":"PDF الشهر")</button>
+</div>
+
+@if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+
+<div class="card-list">
+@foreach (var row in rows)
+{
+ <article class="data-card invoice-register-card">
+  <div class="invoice-register-main">
+   <div class="invoice-register-icon">▤</div>
+   <div class="grow">
+    <strong class="invoice-register-number">@row.Invoice.InvoiceNumber</strong>
+    <div class="invoice-register-meta">
+     <span>@row.FarmName</span><span>@row.CustomerName</span><span>@row.Invoice.InvoiceDate.ToString("yyyy/MM/dd")</span>
+    </div>
+    @if(row.Invoice.Status==InvoiceStatus.Cancelled){<span class="badge danger">ملغاة</span>}
+   </div>
+   <span class="invoice-status-badge @(row.Invoice.PaymentStatus==PaymentStatus.Paid?"paid":row.Invoice.PaymentStatus==PaymentStatus.Partial?"partial":"unpaid")">
+    @(row.Invoice.PaymentStatus==PaymentStatus.Paid?"مدفوعة":row.Invoice.PaymentStatus==PaymentStatus.Partial?"جزئية":"آجلة")
+   </span>
+  </div>
+  <div class="invoice-register-values">
+   <div><span>إجمالي الفاتورة</span><strong>@row.Invoice.GrossAmount.ToString("N2")</strong></div>
+   <div><span>المدفوع</span><strong>@row.Invoice.AmountPaid.ToString("N2")</strong></div>
+   <div><span>المتبقي</span><strong>@row.Invoice.AmountDue.ToString("N2")</strong></div>
+  </div>
+  <div class="invoice-register-actions">
+   <button class="btn small" @onclick="() => PrintAsync(row.Invoice.Id)">PDF</button>
+   @if(row.Invoice.Status!=InvoiceStatus.Cancelled && Session.CanEditInvoices)
+   {
+    <button class="btn small" @onclick="() => EditInvoice(row.Invoice.Id)">تعديل</button>
+   }
+   @if(Session.CanDeleteInvoices)
+   {
+    <button class="btn small danger" @onclick="() => DeleteAsync(row.Invoice.Id, row.Invoice.InvoiceNumber)">حذف</button>
+   }
+  </div>
+ </article>
+}
+</div>
+@if(rows.Count==0){<div class="empty-state">لا توجد فواتير للفترة المحددة.</div>}
+
+@code {
+ private List<Farm> farms=[]; private List<InvoiceListRow> rows=[];
+ private long farmFilter; private int year=DateTime.Today.Year; private int month=DateTime.Today.Month;
+ private string? message; private bool ok; private bool exportingMonth;
+ protected override async Task OnInitializedAsync(){farms=await Service.GetFarmsAsync(true);await LoadAsync();}
+ private void NewInvoice()=>Nav.NavigateTo("/invoice/new");
+ private void EditInvoice(long id)=>Nav.NavigateTo($"/invoice/{id}");
+ private async Task LoadAsync()=>rows=await Service.GetInvoicesAsync(farmFilter==0?null:farmFilter,year,month==0?null:month);
+ private async Task PrintAsync(long id){try{var path=await Pdf.CreateInvoicePdfAsync(id);await Pdf.SharePdfAsync(path,"مشاركة الفاتورة");ok=true;message="تم تجهيز الفاتورة.";}catch(Exception ex){ok=false;message=ex.Message;}}
+ private async Task PrintMonthAsync(){if(month==0)return;exportingMonth=true;try{var path=await Pdf.CreateMonthlyInvoicesPdfAsync(farmFilter==0?null:farmFilter,year,month);await Pdf.SharePdfAsync(path,$"فواتير {year}/{month:00}");ok=true;message="تم تجهيز تقرير الشهر بكل تفاصيل الفواتير والأصناف.";}catch(Exception ex){ok=false;message=ex.Message;}finally{exportingMonth=false;}}
+ private async Task DeleteAsync(long id,string number){try{if(!await JS.InvokeAsync<bool>("confirm",new object?[] { $"حذف الفاتورة {number}؟" }))return;await Service.DeleteInvoiceAsync(id);await LoadAsync();ok=true;message="تم حذف الفاتورة.";}catch(Exception ex){ok=false;message=ex.Message;}}
+ private static string MonthName(int m)=>new[]{"","يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"}[m];
+}

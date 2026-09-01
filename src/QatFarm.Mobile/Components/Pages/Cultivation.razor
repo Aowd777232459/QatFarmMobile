@@ -1,0 +1,140 @@
+@page "/cultivation"
+@inject QatFarmService Service
+@inject AppSession Session
+
+<div class="page-head"><h1>خسائر التربية وديونها</h1></div>
+
+<div class="filter-bar">
+ <InputSelect class="form-control" @bind-Value="farmFilter">
+  <option value="0">كل المزارع</option>
+  @foreach (var f in farms) { <option value="@f.Id">@f.Name</option> }
+ </InputSelect>
+ <input class="form-control" type="number" @bind="year" />
+ <button class="btn" @onclick="LoadRowsAsync">عرض</button>
+</div>
+
+<div class="panel">
+ <h2>@(model.Id == 0 ? "تسجيل خسارة" : "تعديل خسارة")</h2>
+ <EditForm Model="model" OnValidSubmit="SaveAsync">
+  <div class="form-grid">
+   <div><label>المزرعة</label>
+    <InputSelect class="form-control" @bind-Value="model.FarmId">
+     <option value="0">اختر</option>
+     @foreach (var f in farms){<option value="@f.Id">@f.Name</option>}
+    </InputSelect>
+   </div>
+   <div><label>نوع الخسارة</label>
+    <InputSelect class="form-control" @bind-Value="model.ExpenseTypeId">
+     <option value="0">اختر</option>
+     @foreach (var t in types){<option value="@t.Id">@t.Name</option>}
+    </InputSelect>
+   </div>
+   <div><label>المبلغ</label><InputNumber class="form-control" @bind-Value="model.Amount" /></div>
+   <div><label>التاريخ</label><InputDate class="form-control" @bind-Value="model.ExpenseDate" /></div>
+   <div><label>طريقة السداد</label>
+    <InputSelect class="form-control" @bind-Value="model.PaymentType">
+     <option value="@CultivationExpensePaymentType.Cash">نقدي</option>
+     <option value="@CultivationExpensePaymentType.Credit">دين كامل</option>
+     <option value="@CultivationExpensePaymentType.Partial">دفع جزئي</option>
+    </InputSelect>
+   </div>
+   @if (model.PaymentType != CultivationExpensePaymentType.Cash)
+   {
+    <div><label>الدائن</label>
+     <InputSelect class="form-control" @bind-Value="model.CreditorId">
+      <option value="">اختر</option>
+      @foreach (var c in creditors){<option value="@c.Id">@c.Name</option>}
+     </InputSelect>
+    </div>
+    <div><label>المدفوع الآن</label><InputNumber class="form-control" @bind-Value="model.PaidAmount" /></div>
+    <div><label>تاريخ الاستحقاق</label><InputDate class="form-control" @bind-Value="model.DueDate" /></div>
+   }
+  </div>
+  <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
+  <div class="actions">
+   <button class="btn primary">حفظ</button>
+   <button type="button" class="btn ghost" @onclick="Reset">جديد</button>
+  </div>
+ </EditForm>
+ @if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+</div>
+
+<div class="summary-strip">
+ <span>الإجمالي: <b>@rows.Sum(x=>x.Expense.Amount).ToString("N2")</b></span>
+ <span>المدفوع: <b>@rows.Sum(x=>x.Expense.PaidAmount).ToString("N2")</b></span>
+ <span>الديون: <b>@rows.Sum(x=>x.Outstanding).ToString("N2")</b></span>
+</div>
+
+<div class="card-list">
+@foreach (var row in rows)
+{
+ <div class="data-card @(row.IsOverdue ? "overdue" : "")">
+  <div class="grow">
+   <strong>@row.ExpenseTypeName — @row.FarmName</strong>
+   <small>@row.Expense.ExpenseDate.ToString("yyyy/MM/dd") | الدائن: @(row.CreditorName==""?"-":row.CreditorName)</small>
+   <div class="money-line">
+    <span>الإجمالي @row.Expense.Amount.ToString("N2")</span>
+    <span>المدفوع @row.Expense.PaidAmount.ToString("N2")</span>
+    <span>المتبقي @row.Outstanding.ToString("N2")</span>
+   </div>
+   @if (row.IsOverdue){<span class="badge danger">متأخر</span>}
+  </div>
+  <div class="actions vertical">
+   @if (Session.CanRecordPayments && row.Outstanding > 0)
+   { <button class="btn small success" @onclick="() => StartPayment(row)">سداد</button> }
+   @if (Session.IsAdmin)
+   {
+    <button class="btn small" @onclick="() => Edit(row.Expense)">تعديل</button>
+    <button class="btn small danger" @onclick="() => DeleteAsync(row.Expense.Id)">حذف</button>
+   }
+   else
+   {
+    <button class="btn small locked-btn" disabled>🔒 تعديل المدير</button>
+    <button class="btn small locked-btn" disabled>🔒 حذف المدير</button>
+   }
+  </div>
+ </div>
+}
+</div>
+
+@if (paymentExpense is not null)
+{
+ <div class="modal-backdrop">
+  <div class="modal-card">
+   <h2>سداد دين: @paymentExpense.ExpenseTypeName</h2>
+   <label>المبلغ</label><InputNumber class="form-control" @bind-Value="paymentAmount" />
+   <label>طريقة الدفع</label>
+   <InputSelect class="form-control" @bind-Value="paymentMethod">
+    <option value="@PaymentMethod.Cash">نقدي</option>
+    <option value="@PaymentMethod.Transfer">تحويل</option>
+   </InputSelect>
+   <label>رقم المرجع</label><input class="form-control" @bind="paymentReference" />
+   <div class="actions">
+    <button class="btn success" @onclick="SavePaymentAsync">تأكيد السداد</button>
+    <button class="btn ghost" @onclick="ClosePayment">إلغاء</button>
+   </div>
+  </div>
+ </div>
+}
+
+@code {
+ private List<Farm> farms=[]; private List<CultivationExpenseType> types=[]; private List<Creditor> creditors=[];
+ private List<CultivationExpenseRow> rows=[]; private CultivationExpense model=new(){ExpenseDate=DateTime.Today};
+ private long farmFilter; private int year=DateTime.Today.Year; private string? message; private bool ok;
+ private CultivationExpenseRow? paymentExpense; private decimal paymentAmount;
+ private PaymentMethod paymentMethod=PaymentMethod.Cash; private string? paymentReference;
+
+ protected override async Task OnInitializedAsync()
+ {
+  farms=await Service.GetFarmsAsync(true); types=await Service.GetCultivationTypesAsync();
+  creditors=await Service.GetCreditorsAsync(true); await LoadRowsAsync();
+ }
+ private async Task LoadRowsAsync()=>rows=await Service.GetCultivationExpensesAsync(farmFilter==0?null:farmFilter,year);
+ private async Task SaveAsync(){try{await Service.SaveCultivationExpenseAsync(model);ok=true;message="تم الحفظ.";Reset();await LoadRowsAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private void Edit(CultivationExpense x)=>model=new CultivationExpense{Id=x.Id,FarmId=x.FarmId,ExpenseTypeId=x.ExpenseTypeId,Amount=x.Amount,ExpenseDate=x.ExpenseDate,PaymentType=x.PaymentType,CreditorId=x.CreditorId,PaidAmount=x.PaidAmount,DueDate=x.DueDate,DebtStatus=x.DebtStatus,Notes=x.Notes,ReceiptNumber=x.ReceiptNumber,CreatedAt=x.CreatedAt};
+ private void Reset()=>model=new CultivationExpense{ExpenseDate=DateTime.Today};
+ private async Task DeleteAsync(long id){try{await Service.DeleteCultivationExpenseAsync(id);await LoadRowsAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private void StartPayment(CultivationExpenseRow row){paymentExpense=row;paymentAmount=row.Outstanding;paymentReference=null;}
+ private void ClosePayment(){paymentExpense=null;paymentAmount=0;}
+ private async Task SavePaymentAsync(){if(paymentExpense is null)return;try{await Service.AddCultivationDebtPaymentAsync(paymentExpense.Expense.Id,paymentAmount,paymentMethod,paymentReference);ClosePayment();await LoadRowsAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+}
