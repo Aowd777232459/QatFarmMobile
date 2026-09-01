@@ -3,16 +3,15 @@
 @inject AppSession Session
 
 <div class="page-head accounting-page-head">
- <div><h1>لوحة التحكم</h1></div>
- <a class="btn primary compact" href="/accounting">المركز المالي</a>
+ <div>
+  <h1>لوحة التحكم</h1>
+  <span class="erp-subtitle">@DateTime.Now.ToString("yyyy/MM/dd · HH:mm")</span>
+ </div>
+ <div class="erp-head-actions">
+  <a class="btn" href="/reports">التقارير</a>
+  <a class="btn primary" href="/invoice/new">＋ فاتورة</a>
+ </div>
 </div>
-
-<section class="home-qat-hero">
- <img src="images/qat_vip_hero.jpg" alt="مزرعة قات ومنتج زراعي" />
- <div class="home-qat-shade"></div>
- <div class="home-qat-copy"><span>AWAD SOFT</span><h2>نظام زراعي عواد سوفت</h2></div>
- <div class="home-qat-watermark"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
-</section>
 
 @if (!string.IsNullOrWhiteSpace(error))
 {
@@ -34,21 +33,24 @@ else
   <div class="stat-card danger"><span>ديون التربية</span><strong>@Money(summary.CultivationDebts)</strong></div>
   <div class="stat-card zakat"><span>الزكاة المعلقة</span><strong>@Money(summary.PendingZakat)</strong></div>
  </div>
+
  @if (summary.OverdueDebtCount > 0)
  {
-  <div class="alert danger">ديون متأخرة: @summary.OverdueDebtCount</div>
+  <div class="alert danger">ديون متأخرة تحتاج متابعة: @summary.OverdueDebtCount</div>
  }
 }
 
-<h2 class="section-title">العمليات</h2>
-<div class="quick-grid accounting-actions">
- <a class="quick-card" href="/invoice/new"><span class="quick-icon">＋</span><b>فاتورة</b></a>
- <a class="quick-card" href="/invoices"><span class="quick-icon">▤</span><b>الفواتير</b></a>
- <a class="quick-card" href="/cultivation"><span class="quick-icon">▦</span><b>التربية</b></a>
- <a class="quick-card vip" href="/accounting"><span class="quick-icon">◫</span><b>المحاسبة</b></a>
- <a class="quick-card" href="/reports"><span class="quick-icon">▥</span><b>التقارير</b></a>
- <a class="quick-card" href="/farms"><span class="quick-icon">⌂</span><b>المزارع</b></a>
-</div>
+<section class="erp-operations-panel">
+ <div class="erp-section-head"><strong>العمليات اليومية</strong><span>AWAD SOFT</span></div>
+ <div class="quick-grid accounting-actions">
+  <a class="quick-card" href="/invoice/new"><span class="quick-icon">＋</span><b>بيع جديد</b></a>
+  <a class="quick-card" href="/invoices"><span class="quick-icon">▤</span><b>سجل الفواتير</b></a>
+  <a class="quick-card" href="/cultivation"><span class="quick-icon">▦</span><b>خسائر التربية</b></a>
+  <a class="quick-card accounting" href="/accounting"><span class="quick-icon">◫</span><b>المحاسبة</b></a>
+  <a class="quick-card" href="/customers"><span class="quick-icon">◎</span><b>العملاء</b></a>
+  <a class="quick-card" href="/reports"><span class="quick-icon">▥</span><b>التقارير</b></a>
+ </div>
+</section>
 
 @code {
  private DashboardSummary? summary;
@@ -59,7 +61,8 @@ else
  private async Task LoadAsync()
  {
   if (loading) return;
-  loading = true; error = null;
+  loading = true;
+  error = null;
   try { summary = await Service.GetDashboardAsync(); }
   catch (Exception ex) { summary = new DashboardSummary(); error = ex.Message; }
   finally { loading = false; }
