@@ -2,40 +2,44 @@
 @inject QatFarmService Service
 @inject AppSession Session
 
-<div class="page-head"><h1>المزارع</h1></div>
-<div class="panel">
- <h2>@(model.Id == 0 ? "إضافة مزرعة" : "تعديل المزرعة")</h2>
+<div class="page-head">
+ <div><h1>المزارع</h1><span class="erp-subtitle">إدارة المزارع</span></div>
+ <button class="btn primary" @onclick="Reset">＋ مزرعة</button>
+</div>
+
+<div class="summary-strip"><span>عدد المزارع <b>@farms.Count</b></span><span>النشطة <b>@farms.Count(x=>x.IsActive)</b></span></div>
+
+<div class="panel erp-entry-panel">
+ <div class="erp-box-title">@(model.Id == 0 ? "بيانات مزرعة جديدة" : "تعديل المزرعة")</div>
  <EditForm Model="model" OnValidSubmit="SaveAsync">
   <div class="form-grid">
    <div><label>اسم المزرعة</label><InputText class="form-control" @bind-Value="model.Name" /></div>
    <div><label>اسم المالك</label><InputText class="form-control" @bind-Value="model.OwnerName" /></div>
    <div><label>الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
    <div><label>الموقع</label><InputText class="form-control" @bind-Value="model.Location" /></div>
+   <div class="span-2"><label>ملاحظات</label><InputText class="form-control" @bind-Value="model.Notes" /></div>
   </div>
-  <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
-  <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" @onclick="Reset">جديد</button></div>
+  <div class="actions"><button class="btn primary" type="submit">💾 حفظ</button><button class="btn ghost" type="button" @onclick="Reset">مسح</button></div>
  </EditForm>
  @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
 </div>
-<div class="card-list">
+
+<div class="erp-register-head"><strong>سجل المزارع</strong><span>@farms.Count سجل</span></div>
+<div class="card-list farm-register">
 @foreach (var farm in farms)
 {
- <div class="data-card farm-card">
-  <div class="grow"><strong>@farm.Name</strong><small>@farm.Location — @farm.Phone</small></div>
+ <article class="data-card farm-row">
+  <div class="record-icon">⌂</div>
+  <div class="grow"><strong>@farm.Name</strong><small>@(string.IsNullOrWhiteSpace(farm.Location)?"بدون موقع":farm.Location) · @(string.IsNullOrWhiteSpace(farm.Phone)?"بدون هاتف":farm.Phone)</small><div class="record-subline"><span>المالك</span><b>@(string.IsNullOrWhiteSpace(farm.OwnerName)?"-":farm.OwnerName)</b></div></div>
   @if (Session.IsAdmin)
   {
-   <div class="actions">
-    <button class="btn small" @onclick="() => Edit(farm)">تعديل</button>
-    <button class="btn small danger" @onclick="() => DeleteAsync(farm.Id)">حذف</button>
-   </div>
+   <div class="actions vertical"><button class="btn small" @onclick="() => Edit(farm)">تعديل</button><button class="btn small danger" @onclick="() => DeleteAsync(farm.Id)">حذف</button></div>
   }
-  else
-  {
-   <div class="actions"><button class="btn small locked-btn" disabled>🔒 التعديل للمدير</button><button class="btn small locked-btn" disabled>🔒 الحذف للمدير</button></div>
-  }
- </div>
+ </article>
 }
 </div>
+@if(farms.Count==0){<div class="empty-state">لا توجد مزارع.</div>}
+
 @code {
  private List<Farm> farms = [];
  private Farm model = new();
@@ -50,5 +54,5 @@
  }
  private void Edit(Farm x) => model = new Farm { Id=x.Id,Name=x.Name,OwnerName=x.OwnerName,Phone=x.Phone,Location=x.Location,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt };
  private void Reset() => model = new Farm();
- private async Task DeleteAsync(long id){try{await Service.DeleteFarmAsync(id);await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private async Task DeleteAsync(long id){try{await Service.DeleteFarmAsync(id);await LoadAsync();ok=true;message="تم الحذف.";}catch(Exception ex){ok=false;message=ex.Message;}}
 }
