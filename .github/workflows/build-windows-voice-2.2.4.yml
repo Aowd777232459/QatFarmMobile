@@ -1,0 +1,118 @@
+name: AWAD SOFT Windows 2.2.4 Voice
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-voice-2.2.4
+    paths:
+      - '.github/windows-source-2.2.4/**'
+      - '.github/workflows/build-windows-voice-2.2.4.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Prepare 2.2.4 installer metadata
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path '.github/windows-source-2.2.4').Path
+          $iss = Join-Path $root 'Installer\QatFarmSystem.iss'
+          $text = Get-Content $iss -Raw -Encoding UTF8
+          $text = $text.Replace('2.2.3','2.2.4')
+          Set-Content $iss $text -Encoding UTF8
+          $app = Get-Content (Join-Path $root 'QatFarm.Web\Components\App.razor') -Raw -Encoding UTF8
+          if (-not $app.Contains('voice-assistant.js')) { throw 'Voice script is not loaded.' }
+          $layout = Get-Content (Join-Path $root 'QatFarm.Web\Components\Layout\MainLayout.razor') -Raw -Encoding UTF8
+          if (-not $layout.Contains('<VoiceAssistant />')) { throw 'Voice assistant is not mounted.' }
+          $component = Get-Content (Join-Path $root 'QatFarm.Web\Components\Shared\VoiceAssistant.razor') -Raw -Encoding UTF8
+          foreach ($token in @('حذف فاتورة','تعديل الفاتورة','مبيعات اليوم','تقرير المبيعات PDF')) {
+            if (-not $component.Contains($token)) { throw "Voice feature missing: $token" }
+          }
+
+      - name: Restore and compile
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path '.github/windows-source-2.2.4').Path
+          dotnet restore (Join-Path $root 'QatFarmSystem.sln') --configfile (Join-Path $root 'NuGet.config') --force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build (Join-Path $root 'QatFarmSystem.sln') -c Release --no-restore -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Publish and create Setup
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path '.github/windows-source-2.2.4').Path
+          $project = Join-Path $root 'QatFarm.Web\QatFarm.Web.csproj'
+          $publish = Join-Path $root 'Release\publish'
+          $installer = Join-Path $root 'Release\installer'
+          Remove-Item $publish,$installer -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item $publish,$installer -ItemType Directory -Force | Out-Null
+          dotnet restore $project --configfile (Join-Path $root 'NuGet.config') -r win-x64 --force -p:PublishReadyToRun=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish $project -c Release -r win-x64 --self-contained true --no-restore -p:PublishReadyToRun=false -p:PublishSingleFile=false -p:PublishTrimmed=false -o $publish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $iscc = @(
+            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe not found.' }
+          & $iscc (Join-Path $root 'Installer\QatFarmSystem.iss')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setup = Get-ChildItem $installer -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $setup) { throw 'Setup.exe was not produced.' }
+          New-Item release -ItemType Directory -Force | Out-Null
+          Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-2.2.4-Setup.exe' -Force
+          $hash = Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-2.2.4-Setup.exe' -Algorithm SHA256
+          "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-2.2.4-Setup.exe" | Set-Content release/SHA256.txt -Encoding UTF8
+
+      - name: Smoke install and start
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path 'release/AWAD-SOFT-QatFarm-Windows-2.2.4-Setup.exe').Path
+          $installDir = Join-Path $env:RUNNER_TEMP 'AWAD-SOFT-QatFarm-2.2.4'
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOSQL',"/DIR=$installDir" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Installer exited with $($p.ExitCode)." }
+          $exe = Join-Path $installDir 'QatFarm.Web.exe'
+          if (-not (Test-Path $exe)) { throw 'Installed app executable missing.' }
+          $env:DesktopMode__AutoOpenBrowser = 'false'
+          $running = Start-Process $exe -WorkingDirectory $installDir -PassThru
+          try {
+            $responded = $false
+            for ($i=0; $i -lt 20; $i++) {
+              Start-Sleep -Seconds 1
+              if ($running.HasExited) { throw "Application exited early with $($running.ExitCode)." }
+              try {
+                $response = Invoke-WebRequest -Uri 'http://127.0.0.1:5275/' -UseBasicParsing -TimeoutSec 2 -SkipHttpErrorCheck
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 600) { $responded = $true; break }
+              } catch { }
+            }
+            if (-not $responded) { throw 'Local web interface did not respond.' }
+          } finally {
+            if (-not $running.HasExited) { Stop-Process -Id $running.Id -Force }
+          }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: AWAD-SOFT-QatFarm-Windows-2.2.4-Setup
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
