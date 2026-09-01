@@ -23,6 +23,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<MobilePdfService>();
         builder.Services.AddSingleton<BackupService>();
         builder.Services.AddSingleton<LocalSyncService>();
+        builder.Services.AddSingleton<IVoiceRecognitionService, AndroidVoiceRecognitionService>();
+        builder.Services.AddSingleton<VoiceAssistantService>();
         return builder.Build();
     }
 }
