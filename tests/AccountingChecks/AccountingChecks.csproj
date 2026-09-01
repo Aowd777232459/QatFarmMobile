@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/QatFarm.Mobile/Models/AccountingMath.cs" Link="AccountingMath.cs" />
+    <Compile Include="../../src/QatFarm.Mobile/Services/ArabicVoiceText.cs" Link="ArabicVoiceText.cs" />
   </ItemGroup>
 </Project>
