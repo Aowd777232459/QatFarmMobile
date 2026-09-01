@@ -128,10 +128,13 @@ public static class ArabicVoiceText
         for (var i = 1; i < words.Length; i++)
         {
             if (words[i] is not ("حبه" or "حبات" or "حزم" or "حزمه" or "كيلو" or "وحده" or "وحدات")) continue;
-            var start = Math.Max(0, i - 4);
-            var parsed = ParseLeadingNumber(string.Join(' ', words.Skip(start).Take(i - start)));
-            if (parsed.HasValue && parsed.Value > 0 && parsed.Value <= int.MaxValue)
-                return (int)Math.Round(parsed.Value, 0, MidpointRounding.AwayFromZero);
+            for (var length = Math.Min(4, i); length >= 1; length--)
+            {
+                var candidate = string.Join(' ', words.Skip(i - length).Take(length));
+                var parsed = ParseLeadingNumber(candidate);
+                if (parsed.HasValue && parsed.Value > 0 && parsed.Value <= int.MaxValue)
+                    return (int)Math.Round(parsed.Value, 0, MidpointRounding.AwayFromZero);
+            }
         }
         return null;
     }
