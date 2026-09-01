@@ -1,0 +1,223 @@
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject NavigationManager Navigation
+@inject InvoiceService Invoices
+@inject CultivationExpenseService Cultivation
+@inject LookupService Lookups
+@inject DashboardService Dashboard
+@inject CustomerService Customers
+
+<div class="voice-assistant-root">
+    <button class="voice-fab @(listening ? "listening" : "")" type="button" @onclick="Listen" disabled="@busy" title="المعاون الصوتي">
+        <span>🎙</span><small>@(listening ? "أسمعك" : "صوت")</small>
+    </button>
+
+    @if (opened)
+    {
+        <div class="voice-backdrop" @onclick="Close"></div>
+        <section class="voice-panel" role="dialog" aria-label="المعاون الصوتي">
+            <div class="voice-head"><div><strong>المعاون الصوتي</strong><small>AWAD SOFT</small></div><button type="button" @onclick="Close">×</button></div>
+            <div class="voice-input-row">
+                <input class="form-control" @bind="command" @bind:event="oninput" @onkeydown="OnKey" placeholder="تكلم أو اكتب الأمر" />
+                <button type="button" class="voice-mic" @onclick="Listen" disabled="@busy">🎙</button>
+            </div>
+            <button type="button" class="btn btn-primary voice-run" @onclick="Interpret" disabled="@(busy || string.IsNullOrWhiteSpace(command))">تنفيذ الأمر</button>
+
+            @if (listening) { <div class="voice-listening"><i></i><b>تحدث الآن...</b></div> }
+            @if (!string.IsNullOrWhiteSpace(status)) { <div class="alert @(ok ? "success" : "danger") voice-status">@status</div> }
+
+            @if (proposal is not null)
+            {
+                <div class="voice-proposal @(proposal.Confirm ? "confirm" : "")">
+                    <small>فهمت أنك تريد</small>
+                    <h3>@proposal.Title</h3>
+                    <div class="voice-summary">@proposal.Summary</div>
+                    @if (proposal.Confirm)
+                    {
+                        <div class="voice-warning">راجع البيانات قبل التنفيذ.</div>
+                        <div class="voice-actions"><button class="btn btn-primary" @onclick="Execute">تنفيذ</button><button class="btn btn-ghost" @onclick="Cancel">إلغاء</button></div>
+                    }
+                </div>
+            }
+            <div class="voice-examples">
+                <button @onclick='() => Example("فاتورة لعبدالله عشر حبات أميال سعر خمسة آلاف دفع عشرين ألف")'>فاتورة</button>
+                <button @onclick='() => Example("سجل خسارة سقي بمبلغ خمسة وعشرين ألف")'>خسارة</button>
+                <button @onclick='() => Example("كم مبيعات اليوم")'>استعلام</button>
+                <button @onclick='() => Example("صدر تقرير المبيعات PDF")'>تقرير</button>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private bool opened, listening, busy, ok;
+    private string command = string.Empty;
+    private string? status;
+    private Proposal? proposal;
+
+    private sealed class BrowserVoiceResult { public bool Success { get; set; } public string? Text { get; set; } public string? Message { get; set; } }
+    private sealed record Proposal(string Title, string Summary, bool Confirm, Func<Task<string>>? Action = null, string? Route = null, string? PdfUrl = null);
+
+    private async Task Listen()
+    {
+        opened = true; proposal = null; status = null; busy = true; listening = true;
+        try
+        {
+            var result = await JS.InvokeAsync<BrowserVoiceResult>("qatVoice.listen");
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Text)) { ok = false; status = result.Message ?? "لم يتم التقاط أمر واضح."; return; }
+            command = result.Text;
+            await Interpret();
+        }
+        catch (Exception ex) { ok = false; status = ex.Message; }
+        finally { listening = false; busy = false; }
+    }
+
+    private async Task Interpret()
+    {
+        if (string.IsNullOrWhiteSpace(command)) return;
+        opened = true; busy = true; status = null; proposal = null;
+        try
+        {
+            var text = ArabicVoiceText.Normalize(command);
+            proposal = await BuildProposal(text);
+            await Speak(proposal?.Summary);
+            if (proposal is not null && !proposal.Confirm) await Execute();
+        }
+        catch (Exception ex) { ok = false; status = ex.InnerException?.Message ?? ex.Message; await Speak(status); }
+        finally { busy = false; }
+    }
+
+    private async Task<Proposal> BuildProposal(string text)
+    {
+        if (ArabicVoiceText.Has(text, "احذف", "حذف", "امسح") && ArabicVoiceText.Has(text, "فاتوره", "فاتورة"))
+        {
+            var id = ArabicVoiceText.IdAfter(text, "رقم الفاتوره", "رقم الفاتورة", "رقم") ?? throw new InvalidOperationException("اذكر رقم الفاتورة المراد حذفها.");
+            var inv = await Invoices.GetDetailsAsync(id) ?? throw new InvalidOperationException($"لم أجد فاتورة برقم السجل {id}.");
+            return new("حذف فاتورة", $"الفاتورة: {inv.InvoiceNumber}\nالإجمالي: {inv.GrossAmount:N0} ر.ي\nالمتبقي: {inv.AmountDue:N0} ر.ي", true,
+                async () => { await Invoices.DeleteAsync(inv.Id); return "تم حذف الفاتورة."; }, "/invoices");
+        }
+
+        if (ArabicVoiceText.Has(text, "عدل", "تعديل", "غير", "خلي") && ArabicVoiceText.Has(text, "فاتوره", "فاتورة"))
+        {
+            var id = ArabicVoiceText.IdAfter(text, "رقم الفاتوره", "رقم الفاتورة", "رقم") ?? throw new InvalidOperationException("اذكر رقم الفاتورة المراد تعديلها.");
+            var model = await Invoices.GetEditorAsync(id) ?? throw new InvalidOperationException($"لم أجد فاتورة برقم السجل {id}.");
+            var paid = ArabicVoiceText.MoneyAfter(text, "خلي المدفوع", "المدفوع", "مدفوع");
+            if (!paid.HasValue) return new("فتح الفاتورة للتعديل", $"فتح الفاتورة رقم {id}", false, Route: $"/sales/edit/{id}");
+            var gross = model.Items.Sum(x => decimal.Round(x.Quantity * x.UnitPrice, 2, MidpointRounding.AwayFromZero));
+            if (paid < 0 || paid > gross) throw new InvalidOperationException($"المدفوع يجب أن يكون بين صفر و{gross:N0} ريال.");
+            model.AmountPaid = paid.Value;
+            model.PaymentMethod = paid.Value >= gross ? PaymentMethod.Cash : paid.Value > 0 ? PaymentMethod.Mixed : PaymentMethod.Credit;
+            return new("تعديل الفاتورة", $"رقم السجل: {id}\nالمدفوع الجديد: {paid:N0} ر.ي\nالمتبقي الجديد: {Math.Max(0, gross-paid.Value):N0} ر.ي", true,
+                async () => { await Invoices.SaveAsync(model); return "تم تعديل الفاتورة."; }, "/invoices");
+        }
+
+        if (ArabicVoiceText.Has(text, "فاتوره", "فاتورة", "بيع") && ArabicVoiceText.Has(text, "سجل", "انشئ", "اعمل", "اضف", "فاتوره", "فاتورة"))
+            return await BuildInvoice(text);
+
+        if (ArabicVoiceText.Has(text, "احذف", "حذف", "امسح") && ArabicVoiceText.Has(text, "خساره", "خسارة"))
+        {
+            var id = ArabicVoiceText.IdAfter(text, "رقم الخساره", "رقم الخسارة", "رقم") ?? throw new InvalidOperationException("اذكر رقم سجل الخسارة.");
+            return new("حذف خسارة", $"رقم سجل الخسارة: {id}", true, async () => { await Cultivation.DeleteAsync(id); return "تم حذف الخسارة."; }, "/cultivation-expenses");
+        }
+
+        if (ArabicVoiceText.Has(text, "خساره", "خسارة", "مصروف تربيه") && ArabicVoiceText.Has(text, "سجل", "اضف", "انشئ", "اعمل"))
+            return await BuildCultivation(text);
+
+        if (ArabicVoiceText.Has(text, "pdf", "بي دي اف", "تقرير") && ArabicVoiceText.Has(text, "صدر", "تصدير", "اعمل", "جهز", "pdf", "بي دي اف"))
+        {
+            var year = ArabicVoiceText.Year(text) ?? DateTime.Today.Year;
+            var farms = await Lookups.FarmsForReportsAsync();
+            var farm = ArabicVoiceText.Mentioned(text, farms);
+            if (ArabicVoiceText.Has(text, "خساره", "خسائر"))
+            {
+                if (farm is null) return new("تقارير الخسائر", "فتح شاشة التقارير لاختيار المزرعة.", false, Route: "/reports");
+                return new("تقرير خسائر PDF", $"المزرعة: {farm.Name}\nالسنة: {year}", false, PdfUrl: $"/reports/cultivation.pdf?farmId={farm.Id}&year={year}");
+            }
+            return new("تقرير المبيعات PDF", $"المزرعة: {farm?.Name ?? "كل المزارع"}\nالسنة: {year}", false, PdfUrl: $"/reports/sales.pdf?farmId={farm?.Id ?? 0}&year={year}");
+        }
+
+        if (ArabicVoiceText.Has(text, "كم", "اعرض", "ايش", "وش", "مبيعات اليوم", "ديون العملاء", "الزكاه", "الزكاة", "الربح"))
+        {
+            var customerRows = await Customers.GetAllAsync();
+            var customer = FindCustomer(text, customerRows);
+            if (customer is not null && ArabicVoiceText.Has(text, "دين", "رصيد", "حساب", "متبقي"))
+                return new($"رصيد {customer.Name}", $"المتبقي على العميل: {customer.Outstanding:N0} ر.ي", false);
+
+            var d = await Dashboard.GetSummaryAsync();
+            if (ArabicVoiceText.Has(text, "مبيعات اليوم", "بيع اليوم")) return new("مبيعات اليوم", $"{d.TodaySales:N0} ر.ي", false);
+            if (ArabicVoiceText.Has(text, "ديون العملاء", "ذمم العملاء")) return new("ديون العملاء", $"{d.Receivables:N0} ر.ي", false);
+            if (ArabicVoiceText.Has(text, "الزكاه", "الزكاة")) return new("الزكاة المعلقة", $"{d.PendingZakat:N0} ر.ي", false);
+            if (ArabicVoiceText.Has(text, "الربح", "الارباح", "الأرباح")) return new("الربح المحاسبي", $"{d.AccountingProfitYear:N0} ر.ي", false);
+        }
+
+        if (ArabicVoiceText.Has(text, "فاتوره جديده", "فاتورة جديدة")) return new("فاتورة جديدة", "فتح شاشة إدخال الفاتورة.", false, Route: "/sales/new");
+        if (ArabicVoiceText.Has(text, "الفواتير")) return new("الفواتير", "فتح الفواتير.", false, Route: "/invoices");
+        if (ArabicVoiceText.Has(text, "الخسائر")) return new("الخسائر", "فتح خسائر التربية.", false, Route: "/cultivation-expenses");
+        if (ArabicVoiceText.Has(text, "التقارير")) return new("التقارير", "فتح التقارير.", false, Route: "/reports");
+        if (ArabicVoiceText.Has(text, "المحاسبه", "المحاسبة")) return new("المحاسبة", "فتح المركز المحاسبي.", false, Route: "/accounting");
+        if (ArabicVoiceText.Has(text, "العملاء")) return new("العملاء", "فتح العملاء.", false, Route: "/customers");
+        if (ArabicVoiceText.Has(text, "المزارع")) return new("المزارع", "فتح المزارع.", false, Route: "/farms");
+        if (ArabicVoiceText.Has(text, "الزكاه", "الزكاة")) return new("الزكاة", "فتح الزكاة.", false, Route: "/zakat");
+
+        return new("الأمر غير مكتمل", "قل مثلًا: «فاتورة لعبدالله عشر حبات أميال سعر خمسة آلاف دفع عشرين ألف»، أو «سجل خسارة سقي بمبلغ خمسة وعشرين ألف».", false);
+    }
+
+    private async Task<Proposal> BuildInvoice(string text)
+    {
+        var farms = await Lookups.FarmsAsync(); var customers = await Lookups.CustomersAsync(); var qat = await Lookups.QatTypesAsync();
+        var farm = ArabicVoiceText.Mentioned(text, farms) ?? (farms.Count == 1 ? farms[0] : null) ?? throw new InvalidOperationException("اذكر اسم المزرعة.");
+        var type = ArabicVoiceText.Mentioned(text, qat) ?? throw new InvalidOperationException("اذكر صنف القات.");
+        var customer = ArabicVoiceText.Mentioned(text, customers);
+        var cash = ArabicVoiceText.Has(text, "نقدي", "كاش", "بيع مباشر", "بدون عميل");
+        var qty = ArabicVoiceText.Quantity(text) ?? throw new InvalidOperationException("اذكر الكمية مثل «عشر حبات».");
+        var price = ArabicVoiceText.MoneyAfter(text, "سعر الحبه", "سعر الحبة", "سعر الوحده", "السعر", "سعر") ?? throw new InvalidOperationException("اذكر سعر الوحدة.");
+        var paid = ArabicVoiceText.MoneyAfter(text, "المبلغ المدفوع", "المدفوع", "مدفوع", "دفع", "دفعت") ?? 0m;
+        if (customer is null && !cash) throw new InvalidOperationException("اذكر اسم عميل مسجل أو قل «بيع نقدي».");
+        var gross = decimal.Round(qty * price, 2, MidpointRounding.AwayFromZero);
+        if (paid > gross) throw new InvalidOperationException("المدفوع أكبر من إجمالي الفاتورة.");
+        var model = new InvoiceEditorModel { FarmId=farm.Id, CustomerId=customer?.Id, InvoiceDate=DateTime.Now, BuyerName=customer?.Name.Split('—')[0].Trim() ?? "بيع نقدي", ZakatPercent=5m, Items=[new(){QatTypeId=type.Id,Quantity=qty,UnitPrice=price}] };
+        if(customer is null){model.AmountPaid=gross;model.PaymentMethod=PaymentMethod.Cash;}else{model.AmountPaid=paid;model.PaymentMethod=paid>=gross?PaymentMethod.Cash:paid>0?PaymentMethod.Mixed:PaymentMethod.Credit;}
+        var due=Math.Max(0,gross-model.AmountPaid);
+        return new("إنشاء فاتورة بيع", $"المزرعة: {farm.Name}\nالعميل: {customer?.Name.Split('—')[0].Trim() ?? "بيع نقدي"}\nالصنف: {type.Name}\nالكمية: {qty}\nسعر الوحدة: {price:N0}\nالإجمالي: {gross:N0} ر.ي\nالمدفوع: {model.AmountPaid:N0} ر.ي\nالمتبقي على العميل: {due:N0} ر.ي", true,
+            async()=>{var id=await Invoices.SaveAsync(model);return $"تم إنشاء الفاتورة رقم السجل {id}.";}, "/invoices");
+    }
+
+    private async Task<Proposal> BuildCultivation(string text)
+    {
+        var farms=await Lookups.FarmsAsync(); var types=await Lookups.CultivationExpenseTypesAsync(); var creditors=await Lookups.CreditorsAsync();
+        var farm=ArabicVoiceText.Mentioned(text,farms) ?? (farms.Count==1?farms[0]:null) ?? throw new InvalidOperationException("اذكر اسم المزرعة.");
+        var type=ArabicVoiceText.Mentioned(text,types) ?? throw new InvalidOperationException("اذكر نوع الخسارة.");
+        var amount=ArabicVoiceText.MoneyAfter(text,"بمبلغ","المبلغ","مبلغ") ?? ArabicVoiceText.AnyNumber(text,100) ?? throw new InvalidOperationException("اذكر مبلغ الخسارة.");
+        var partial=ArabicVoiceText.Has(text,"جزئي","جزء"); var credit=partial||ArabicVoiceText.Has(text,"اجل","آجل","دين","على الحساب");
+        var creditor=credit?ArabicVoiceText.Mentioned(text,creditors):null;
+        if(credit&&creditor is null) throw new InvalidOperationException("اذكر اسم الدائن عند تسجيل خسارة آجلة.");
+        var paid=partial ? ArabicVoiceText.MoneyAfter(text,"المدفوع","دفعت","دفع")??0m : credit?0m:amount;
+        var model=new CultivationExpenseEditorModel{FarmId=farm.Id,ExpenseTypeId=type.Id,Amount=amount,ExpenseDate=DateTime.Today,PaymentType=partial?CultivationExpensePaymentType.Partial:credit?CultivationExpensePaymentType.Credit:CultivationExpensePaymentType.Cash,CreditorId=creditor?.Id,InitialPaidAmount=paid,Notes="تم الإدخال بواسطة المعاون الصوتي"};
+        return new("تسجيل خسارة تربية",$"المزرعة: {farm.Name}\nالنوع: {type.Name}\nالمبلغ: {amount:N0} ر.ي\nالمدفوع: {paid:N0} ر.ي\nالمتبقي: {Math.Max(0,amount-paid):N0} ر.ي",true,
+            async()=>{var id=await Cultivation.SaveAsync(model);return $"تم تسجيل الخسارة رقم {id}.";},"/cultivation-expenses");
+    }
+
+    private static CustomerListRow? FindCustomer(string text, IEnumerable<CustomerListRow> rows)
+    {
+        var n=ArabicVoiceText.Normalize(text); return rows.OrderByDescending(x=>x.Name.Length).FirstOrDefault(x=>n.Contains(ArabicVoiceText.Normalize(x.Name),StringComparison.Ordinal));
+    }
+
+    private async Task Execute()
+    {
+        if(proposal is null) return; busy=true;
+        try
+        {
+            if(proposal.Action is not null){status=await proposal.Action();ok=true;await Speak(status);}
+            else {status=proposal.Summary;ok=true;}
+            if(!string.IsNullOrWhiteSpace(proposal.PdfUrl)){await JS.InvokeVoidAsync("qatVoice.openUrl",proposal.PdfUrl);return;}
+            if(!string.IsNullOrWhiteSpace(proposal.Route)){var route=proposal.Route;proposal=null;opened=false;Navigation.NavigateTo(route);}
+        }
+        catch(Exception ex){ok=false;status=ex.InnerException?.Message??ex.Message;await Speak(status);}
+        finally{busy=false;}
+    }
+
+    private Task Speak(string? text)=>string.IsNullOrWhiteSpace(text)?Task.CompletedTask:JS.InvokeVoidAsync("qatVoice.speak",text).AsTask();
+    private async Task OnKey(KeyboardEventArgs e){if(e.Key=="Enter"&&!busy)await Interpret();}
+    private void Example(string text){command=text;proposal=null;status=null;opened=true;}
+    private void Cancel(){proposal=null;ok=true;status="تم إلغاء الأمر.";}
+    private void Close(){opened=false;proposal=null;status=null;listening=false;}
+}
