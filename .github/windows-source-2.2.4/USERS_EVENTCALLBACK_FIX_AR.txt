@@ -1,0 +1,26 @@
+إصلاح صفحة إدارة المستخدمين
+===========================
+
+المشكلة:
+كانت الدالة Reset معرفة بهذا الشكل:
+private void Reset(bool clearMessages = true)
+
+وربطها المباشر:
+@onclick="Reset"
+
+يجعل Razor يحاول تحويل method group ذي معامل bool اختياري إلى EventCallback، فينتج:
+CS1503: cannot convert from method group to EventCallback
+CS1662: Cannot convert lambda expression to intended delegate type
+
+الإصلاح:
+تم تعديل الزرين في Users.razor إلى:
+@onclick="() => Reset()"
+
+المواضع المصححة:
+- زر مستخدم جديد
+- زر إلغاء داخل نموذج المستخدم
+
+الفحص:
+- لا يوجد أي @onclick="Reset" متبقٍ في Users.razor.
+- الدالة Reset بقيت كما هي للحفاظ على استخدام Reset(clearMessages: false) بعد الحفظ.
+- لم يتم تعديل قاعدة البيانات أو أي ميزة أخرى.

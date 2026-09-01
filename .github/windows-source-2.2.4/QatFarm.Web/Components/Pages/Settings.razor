@@ -1,0 +1,203 @@
+@page "/settings"
+@attribute [Authorize(Roles = "Administrator")]
+@inject DatabaseBackupService BackupService
+@inject LocalSyncService LocalSync
+@inject LookupService Lookups
+@inject Microsoft.JSInterop.IJSRuntime JS
+@using Microsoft.JSInterop
+
+<PageTitle>إعدادات النظام</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">المدير فقط</span>
+        <h1>إعدادات النظام والصيانة</h1>
+        <p>الأمان، قاعدة البيانات، النسخ الاحتياطي، ومسارات تشغيل النسخة المثبتة.</p>
+    </div>
+    <a class="btn btn-outline" href="/account/change-password">تغيير كلمة المرور</a>
+</div>
+
+<section class="panel">
+    <div class="panel-header"><div><h2>المظهر وحجم الخط واللغة</h2><p>تُحفظ هذه الخيارات على هذا الجهاز ويمكن تغييرها في أي وقت.</p></div><button class="btn btn-primary" type="button" @onclick="SaveAppearance">حفظ المظهر</button></div>
+    <div class="preferences-grid">
+        <div class="field"><label>المظهر</label><select class="form-control" @bind="theme"><option value="green">الهوية الخضراء</option><option value="light">الوضع الفاتح</option><option value="dark">الوضع الداكن</option><option value="gold">الهوية الذهبية</option></select></div>
+        <div class="field"><label>حجم الخط</label><select class="form-control" @bind="fontScale"><option value="0.9">صغير</option><option value="1">متوسط</option><option value="1.12">كبير</option><option value="1.22">كبير جدًا</option></select></div>
+        <div class="field"><label>اللغة</label><select class="form-control" @bind="language"><option value="ar">العربية</option><option value="en">الإنجليزية</option></select></div>
+    </div>
+</section>
+
+<section class="panel sync-card">
+    <div class="panel-header"><div><h2>مزامنة Wi-Fi مع الجوال</h2><p>اربط الجوال مرة واحدة، ثم تتم المزامنة تلقائيًا عندما يكون الجهازان على شبكة Wi-Fi نفسها.</p></div><span class="status paid">جاهز</span></div>
+    <div class="form-grid cols-2">
+        <div class="field"><label>عنوان الكمبيوتر الذي يُكتب في الجوال</label>@foreach (var address in syncAddresses) { <code class="sync-address">@address</code> } @if (syncAddresses.Count == 0) { <span>اتصل بشبكة Wi-Fi ثم أعد فتح الصفحة.</span> }</div>
+        <div class="field"><label>رمز الربط</label><div class="pairing-key">@pairingKey</div><small>لا تشارك هذا الرمز إلا مع جوالك.</small></div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header"><div><h2>إضافة أنواع جديدة للقوائم المنسدلة</h2><p>الأنواع المحفوظة تظهر مباشرة في خسائر التربية وفاتورة البيع، ثم تنتقل للجوال عند المزامنة.</p></div></div>
+    <div class="preferences-grid">
+        <div class="setting-card"><h2>أنواع القات</h2><input class="form-control" @bind="newQatType" placeholder="اسم نوع القات" /><button class="btn btn-primary btn-block" type="button" @onclick="AddQatType">إضافة النوع</button></div>
+        <div class="setting-card"><h2>مصروفات الفاتورة</h2><input class="form-control" @bind="newDailyType" placeholder="اسم نوع المصروف" /><button class="btn btn-primary btn-block" type="button" @onclick="AddDailyType">إضافة النوع</button></div>
+        <div class="setting-card"><h2>خسائر التربية</h2><input class="form-control" @bind="newCultivationType" placeholder="اسم نوع الخسارة" /><button class="btn btn-primary btn-block" type="button" @onclick="AddCultivationType">إضافة النوع</button></div>
+    </div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert success">@message</div>
+}
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert danger">@error</div>
+}
+
+<div class="settings-grid">
+    <section class="panel setting-card">
+        <div class="setting-icon">%</div>
+        <h2>ضبط الزكاة</h2>
+        <p>النسبة الافتراضية 5% وتُحسب من إجمالي البيع قبل خصم المصروفات، مع متابعة حالة الدفع ومرجعه.</p>
+        <span class="status paid">مفعّل</span>
+    </section>
+
+    <section class="panel setting-card">
+        <div class="setting-icon">⌘</div>
+        <h2>حماية الحساب</h2>
+        <p>كلمة مرور قوية، قفل بعد خمس محاولات فاشلة، وإجبار المدير على تغيير كلمة المرور المؤقتة.</p>
+        <span class="status paid">مفعّل</span>
+    </section>
+
+    <section class="panel setting-card">
+        <div class="setting-icon">◎</div>
+        <h2>سجل التدقيق</h2>
+        <p>تُسجل عمليات الإضافة والتعديل والإلغاء والحذف الآمن دون إزالة السجل المالي الحقيقي.</p>
+        <span class="status paid">مفعّل</span>
+    </section>
+
+    <section class="panel setting-card">
+        <div class="setting-icon">▣</div>
+        <h2>قاعدة البيانات</h2>
+        <p>SQL Server مع علاقات مرجعية، فهارس، RowVersion، وترقية تلقائية متدرجة تحافظ على البيانات القديمة.</p>
+        <span class="status paid">جاهز</span>
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>النسخ الاحتياطي لقاعدة البيانات</h2>
+            <p>ينشئ ملف BAK ويتحقق منه عبر RESTORE VERIFYONLY. العملية متاحة للمدير فقط.</p>
+        </div>
+        <button class="btn btn-primary" type="button" disabled="@creatingBackup" @onclick="CreateBackup">
+            @(creatingBackup ? "جارٍ إنشاء النسخة…" : "إنشاء نسخة احتياطية الآن")
+        </button>
+    </div>
+
+    <div class="form-grid cols-2">
+        <div class="field">
+            <label>مسار بيانات التطبيق</label>
+            <code>@RuntimePaths.DataDirectory</code>
+        </div>
+        <div class="field">
+            <label>المسار الافتراضي للنسخ</label>
+            <code>@RuntimePaths.BackupsDirectory</code>
+        </div>
+    </div>
+
+    <p class="security-note">
+        في النسخة المثبتة يُنشئ المثبت مجلد النسخ ويمنح خدمة SQL Server Express صلاحية الكتابة عليه.
+        احتفظ أيضًا بنسخة خارجية على قرص آخر بصورة دورية.
+    </p>
+</section>
+
+<section class="panel security-note">
+    <h2>التشغيل المحلي والشبكي</h2>
+    <p>
+        المزامنة تعمل داخل شبكة Wi-Fi الخاصة فقط برمز ربط، ولا تفتح قاعدة البيانات نفسها على الشبكة.
+        عند النشر عبر الإنترنت يجب استخدام HTTPS وشهادة موثوقة. إعدادات الجهاز تُحفظ داخل ProgramData ولا تُحذف عند تحديث التطبيق.
+    </p>
+</section>
+
+@code {
+    private bool creatingBackup;
+    private string? message;
+    private string? error;
+    private string theme = "green";
+    private string fontScale = "1";
+    private string language = "ar";
+    private string pairingKey = "جارٍ التجهيز…";
+    private IReadOnlyList<string> syncAddresses = [];
+    private string newQatType = string.Empty;
+    private string newDailyType = string.Empty;
+    private string newCultivationType = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        pairingKey = await LocalSync.GetOrCreatePairingKeyAsync();
+        syncAddresses = LocalSyncService.GetLocalSyncAddresses();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var prefs = await JS.InvokeAsync<AppearancePreferences>("awadUiPreferences.get");
+            theme = string.IsNullOrWhiteSpace(prefs.Theme) ? "green" : prefs.Theme;
+            fontScale = prefs.FontScale <= 0 ? "1" : prefs.FontScale.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            language = prefs.Language == "en" ? "en" : "ar";
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task SaveAppearance()
+    {
+        var scale = double.TryParse(fontScale, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : 1;
+        await JS.InvokeVoidAsync("awadUiPreferences.save", new { theme, fontScale = scale, language });
+        message = "تم حفظ إعدادات المظهر والخط واللغة.";
+    }
+
+    private async Task AddQatType() => await AddCatalogAsync(() => Lookups.AddQatTypeAsync(newQatType), () => newQatType = string.Empty);
+    private async Task AddDailyType() => await AddCatalogAsync(() => Lookups.AddDailyExpenseTypeAsync(newDailyType), () => newDailyType = string.Empty);
+    private async Task AddCultivationType() => await AddCatalogAsync(() => Lookups.AddCultivationExpenseTypeAsync(newCultivationType), () => newCultivationType = string.Empty);
+    private async Task AddCatalogAsync(Func<Task> action, Action reset)
+    {
+        try { error = null; await action(); reset(); message = "تمت إضافة النوع وسيظهر في القائمة المنسدلة."; }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private sealed class AppearancePreferences
+    {
+        public string Theme { get; set; } = "green";
+        public double FontScale { get; set; } = 1;
+        public string Language { get; set; } = "ar";
+    }
+
+    private async Task CreateBackup()
+    {
+        creatingBackup = true;
+        message = error = null;
+        try
+        {
+            var result = await BackupService.CreateAsync();
+            message = $"تم إنشاء نسخة احتياطية صحيحة بحجم {FormatSize(result.FileSize)} في: {result.FilePath}";
+        }
+        catch (Exception ex)
+        {
+            error = $"تعذر إنشاء النسخة الاحتياطية: {ex.Message}";
+        }
+        finally
+        {
+            creatingBackup = false;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes >= 1024L * 1024L * 1024L) return $"{bytes / 1024d / 1024d / 1024d:N2} GB";
+        if (bytes >= 1024L * 1024L) return $"{bytes / 1024d / 1024d:N2} MB";
+        if (bytes >= 1024L) return $"{bytes / 1024d:N2} KB";
+        return $"{bytes:N0} B";
+    }
+}

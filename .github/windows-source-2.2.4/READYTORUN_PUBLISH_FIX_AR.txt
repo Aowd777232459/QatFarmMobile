@@ -1,0 +1,13 @@
+﻿إصلاح خطأ NETSDK1094
+
+سبب الخطأ:
+كان النشر يستخدم PublishReadyToRun=true مع --no-restore، بينما استعادة Runtime لم تتضمن حزمة crossgen المطلوبة.
+
+الإصلاح:
+- تم ضبط PublishReadyToRun=false في ملف النشر.
+- تم تمرير PublishReadyToRun=false في restore وpublish.
+- بقي النشر Self-contained لويندوز x64، لذلك جهاز المستخدم النهائي لا يحتاج تثبيت .NET.
+- لم يتم تفعيل Trim أو SingleFile حفاظًا على توافق Blazor وQuestPDF.
+
+طريقة التنفيذ:
+شغّل BUILD_FINAL_INSTALLER.cmd كمسؤول.

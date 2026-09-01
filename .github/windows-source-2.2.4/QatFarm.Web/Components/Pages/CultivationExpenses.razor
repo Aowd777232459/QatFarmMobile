@@ -1,0 +1,676 @@
+@page "/cultivation-expenses"
+@attribute [Authorize]
+@inject CultivationExpenseService Service
+@inject LookupService Lookups
+
+<PageTitle>خسائر التربية وديونها</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">الخسائر والالتزامات</span>
+        <h1>خسائر التربية وديون الدائنين</h1>
+        <p>تسجيل الخسارة، معرفة لمن المبلغ، متابعة السداد، وحجز الديون من الربح القابل للتوزيع.</p>
+    </div>
+    <a class="btn btn-outline" href="@PdfUrl" target="_blank">⇩ PDF تفصيلي سنة @year</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert success">@message</div>
+}
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert danger">@error</div>
+}
+
+@if (overview.Summary.OutstandingDebt > 0)
+{
+    <div class="alert danger">
+        توجد ديون تربية غير مسددة بقيمة <b>@overview.Summary.OutstandingDebt.ToString("N0") ر.ي</b>.
+        المصروف محسوب مرة واحدة في الربح المحاسبي، لكن الربح الآمن لا يعتمد إلا على النقد المحصل بعد حجز كامل الالتزامات.
+    </div>
+}
+
+<section class="stats-grid">
+    <article class="stat-card green">
+        <span>المبيعات المحصلة</span>
+        <strong>@overview.Summary.CollectedSales.ToString("N0")</strong>
+        <small>من أصل @overview.Summary.GrossSales.ToString("N0") ر.ي</small>
+    </article>
+    <article class="stat-card red">
+        <span>ديون العملاء</span>
+        <strong>@overview.Summary.CustomerReceivables.ToString("N0")</strong>
+        <small>ليست سيولة قابلة للتوزيع</small>
+    </article>
+    <article class="stat-card">
+        <span>إجمالي خسائر التربية</span>
+        <strong>@overview.Summary.TotalExpenses.ToString("N0")</strong>
+        <small>المسدد @overview.Summary.TotalPaid.ToString("N0") ر.ي</small>
+    </article>
+    <article class="stat-card red">
+        <span>ديون التربية المتبقية</span>
+        <strong>@overview.Summary.OutstandingDebt.ToString("N0")</strong>
+        <small>@overview.Summary.DebtCount دين مفتوح — @overview.Summary.OverdueDebtCount متأخر</small>
+    </article>
+    <article class="stat-card">
+        <span>الربح المحاسبي</span>
+        <strong>@overview.Summary.AccountingProfit.ToString("N0")</strong>
+        <small>بعد خصم كامل خسائر التربية مرة واحدة</small>
+    </article>
+    <article class="stat-card gold">
+        <span>النقد بعد حجز الالتزامات</span>
+        <strong>@overview.Summary.CashAfterAllReserves.ToString("N0")</strong>
+        <small>قد يكون سالبًا عند وجود عجز سيولة</small>
+    </article>
+    <article class="stat-card green">
+        <span>الربح الآمن القابل للتوزيع</span>
+        <strong>@overview.Summary.SafeDistributableProfit.ToString("N0")</strong>
+        <small>الأقل بين الربح المحاسبي والنقد المتاح</small>
+    </article>
+</section>
+
+<section class="panel expense-entry">
+    <div class="panel-header">
+        <div>
+            <h2>@(expenseModel.Id == 0 ? "إضافة خسارة تربية" : "تعديل خسارة التربية")</h2>
+            <p>التعديل متاح لمدير النظام فقط. السداد يُسجل كدفعات مستقلة ولا يُغير أصل المصروف.</p>
+        </div>
+    </div>
+
+    <EditForm Model="expenseModel" OnValidSubmit="SaveExpense">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="validation-summary" />
+
+        <div class="form-grid cols-5">
+            <div class="field">
+                <label>المزرعة *</label>
+                <InputSelect class="form-control" @bind-Value="expenseModel.FarmId">
+                    <option value="0">اختر المزرعة</option>
+                    @foreach (var farm in activeFarms)
+                    {
+                        <option value="@farm.Id">@farm.Name</option>
+                    }
+                </InputSelect>
+            </div>
+
+            <div class="field">
+                <label>نوع الخسارة *</label>
+                <InputSelect class="form-control" @bind-Value="expenseModel.ExpenseTypeId">
+                    <option value="0">اختر النوع</option>
+                    @foreach (var type in expenseTypes)
+                    {
+                        <option value="@type.Id">@type.Name</option>
+                    }
+                </InputSelect>
+            </div>
+
+            <div class="field">
+                <label>إجمالي المبلغ *</label>
+                <InputNumber class="form-control" @bind-Value="expenseModel.Amount" />
+            </div>
+
+            <div class="field">
+                <label>التاريخ</label>
+                <InputDate class="form-control" @bind-Value="expenseModel.ExpenseDate" />
+            </div>
+
+            <div class="field">
+                <label>طريقة تسجيل المبلغ</label>
+                <InputSelect class="form-control" @bind-Value="expenseModel.PaymentType" disabled="@(expenseModel.Id > 0)">
+                    <option value="@CultivationExpensePaymentType.Cash">نقدي ومدفوع بالكامل</option>
+                    <option value="@CultivationExpensePaymentType.Credit">دين كامل</option>
+                    <option value="@CultivationExpensePaymentType.Partial">مدفوع جزئيًا</option>
+                </InputSelect>
+            </div>
+
+            <div class="field">
+                <label>الدائن / صاحب المبلغ</label>
+                <InputSelect class="form-control" @bind-Value="expenseModel.CreditorId">
+                    <option value="">بدون دائن</option>
+                    @foreach (var creditor in creditorLookups)
+                    {
+                        <option value="@creditor.Id">@creditor.Name</option>
+                    }
+                </InputSelect>
+            </div>
+
+            <div class="field">
+                <label>@(expenseModel.Id == 0 ? "المدفوع عند التسجيل" : "المدفوع من سجل الدفعات")</label>
+                <InputNumber class="form-control" @bind-Value="expenseModel.InitialPaidAmount" disabled="@(expenseModel.Id > 0 || expenseModel.PaymentType == CultivationExpensePaymentType.Cash)" />
+                @if (expenseModel.PaymentType == CultivationExpensePaymentType.Cash && expenseModel.Id == 0)
+                {
+                    <small>سيعتبر النظام كامل المبلغ مدفوعًا.</small>
+                }
+            </div>
+
+            <div class="field">
+                <label>طريقة الدفعة الأولى</label>
+                <InputSelect class="form-control" @bind-Value="expenseModel.InitialPaymentMethod" disabled="@(expenseModel.Id > 0)">
+                    <option value="@PaymentMethod.Cash">نقدًا</option>
+                    <option value="@PaymentMethod.Transfer">تحويل</option>
+                </InputSelect>
+            </div>
+
+            <div class="field">
+                <label>مرجع الدفعة الأولى</label>
+                <InputText class="form-control" @bind-Value="expenseModel.InitialPaymentReference" disabled="@(expenseModel.Id > 0)" />
+            </div>
+
+            <div class="field">
+                <label>تاريخ الاستحقاق</label>
+                <InputDate class="form-control" @bind-Value="expenseModel.DueDate" />
+            </div>
+        </div>
+
+        <div class="field">
+            <label>ملاحظات</label>
+            <InputTextArea class="form-control" @bind-Value="expenseModel.Notes" />
+        </div>
+
+        <div class="form-actions">
+            @if (expenseModel.Id == 0)
+            {
+                <button class="btn btn-primary" type="submit">حفظ الخسارة</button>
+            }
+            else
+            {
+                <AuthorizeView Roles="Administrator" Context="expenseAuthContext">
+                    <button class="btn btn-primary" type="submit">حفظ التعديل</button>
+                </AuthorizeView>
+            }
+            <button class="btn btn-ghost" type="button" @onclick="ResetExpense">جديد</button>
+        </div>
+    </EditForm>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>إدارة الدائنين</h2>
+            <p>أضف العامل أو المورد أو صاحب البئر الذي يستحق مبلغ خسارة التربية.</p>
+        </div>
+    </div>
+
+    <EditForm Model="creditorModel" OnValidSubmit="SaveCreditor">
+        <DataAnnotationsValidator />
+        <div class="form-grid cols-5">
+            <div class="field"><label>اسم الدائن *</label><InputText class="form-control" @bind-Value="creditorModel.Name" /></div>
+            <div class="field"><label>رقم الهاتف</label><InputText class="form-control" @bind-Value="creditorModel.Phone" /></div>
+            <div class="field"><label>العنوان</label><InputText class="form-control" @bind-Value="creditorModel.Address" /></div>
+            <div class="field"><label>ملاحظات</label><InputText class="form-control" @bind-Value="creditorModel.Notes" /></div>
+            <div class="field"><label>الحالة</label><InputCheckbox @bind-Value="creditorModel.IsActive" /> نشط</div>
+        </div>
+        <div class="form-actions">
+            @if (creditorModel.Id == 0)
+            {
+                <button class="btn btn-primary" type="submit">إضافة الدائن</button>
+            }
+            else
+            {
+                <AuthorizeView Roles="Administrator" Context="creditorAuthContext">
+                    <button class="btn btn-primary" type="submit">حفظ تعديل الدائن</button>
+                </AuthorizeView>
+            }
+            <button class="btn btn-ghost" type="button" @onclick="ResetCreditor">جديد</button>
+        </div>
+    </EditForm>
+</section>
+
+@if (selectedDebt is not null)
+{
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>سداد دين: @selectedDebt.CreditorName</h2>
+                <p>@selectedDebt.ExpenseTypeName — المتبقي @selectedDebt.OutstandingAmount.ToString("N0") ر.ي</p>
+            </div>
+            <button class="btn btn-ghost" type="button" @onclick="ClosePayment">إغلاق</button>
+        </div>
+
+        <AuthorizeView Roles="Administrator,Accountant" Context="paymentAuthContext">
+            <EditForm Model="paymentModel" OnValidSubmit="SavePayment" Context="paymentEditContext">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="validation-summary" />
+                <div class="form-grid cols-5">
+                    <div class="field"><label>مبلغ الدفعة *</label><InputNumber class="form-control" @bind-Value="paymentModel.Amount" /></div>
+                    <div class="field"><label>تاريخ الدفع</label><InputDate class="form-control" @bind-Value="paymentModel.PaymentDate" /></div>
+                    <div class="field">
+                        <label>طريقة الدفع</label>
+                        <InputSelect class="form-control" @bind-Value="paymentModel.PaymentMethod">
+                            <option value="@PaymentMethod.Cash">نقدًا</option>
+                            <option value="@PaymentMethod.Transfer">تحويل</option>
+                        </InputSelect>
+                    </div>
+                    <div class="field"><label>رقم السند / المرجع</label><InputText class="form-control" @bind-Value="paymentModel.ReferenceNumber" /></div>
+                    <div class="field"><label>ملاحظات</label><InputText class="form-control" @bind-Value="paymentModel.Notes" /></div>
+                </div>
+                <div class="form-actions"><button class="btn btn-primary" type="submit">تسجيل الدفعة</button></div>
+            </EditForm>
+        </AuthorizeView>
+
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>التاريخ</th><th>الدائن</th><th>المبلغ</th><th>طريقة الدفع</th><th>المرجع</th><th>ملاحظات</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var payment in paymentRows)
+                    {
+                        <tr>
+                            <td>@payment.PaymentDate.ToString("yyyy/MM/dd")</td>
+                            <td>@payment.CreditorName</td>
+                            <td class="money positive">@payment.Amount.ToString("N0")</td>
+                            <td>@PaymentMethodText(payment.PaymentMethod)</td>
+                            <td>@(payment.ReferenceNumber ?? "—")</td>
+                            <td>@(payment.Notes ?? "—")</td>
+                            <td class="actions">
+                                <AuthorizeView Roles="Administrator">
+                                    <button class="danger-action" title="حذف الدفعة" @onclick="() => DeletePayment(payment.Id)">⌫</button>
+                                </AuthorizeView>
+                            </td>
+                        </tr>
+                    }
+                    @if (paymentRows.Count == 0)
+                    {
+                        <tr><td colspan="7"><div class="empty-inline">لا توجد دفعات مسجلة لهذه الخسارة.</div></td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+<section class="panel table-panel">
+    <div class="panel-header">
+        <div>
+            <h2>خسائر @SelectedFarmName — سنة @year</h2>
+            <p>يعرض أصل المصروف، ما تم سداده، الدين المتبقي، ولمن يستحق.</p>
+        </div>
+        <div class="filters-inline">
+            <select class="form-control compact" @bind="filterFarmId" @bind:after="Load">
+                <option value="0">كل المزارع</option>
+                @foreach (var farm in reportFarms)
+                {
+                    <option value="@farm.Id">@farm.Name</option>
+                }
+            </select>
+            <select class="form-control compact" @bind="year" @bind:after="Load">
+                @foreach (var item in years)
+                {
+                    <option value="@item">@item</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>السند</th><th>المزرعة</th><th>الخسارة</th><th>الدائن</th><th>الإجمالي</th>
+                    <th>المدفوع</th><th>المتبقي</th><th>الاستحقاق</th><th>الحالة</th><th>التاريخ</th><th>العمليات</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in overview.Expenses)
+                {
+                    <tr class="@(row.IsOverdue ? "zakat-overdue-row" : string.Empty)">
+                        <td><code>@row.ReceiptNumber</code></td>
+                        <td><b>@row.FarmName</b></td>
+                        <td>@row.ExpenseTypeName</td>
+                        <td>@row.CreditorName</td>
+                        <td class="money negative">@row.Amount.ToString("N0")</td>
+                        <td class="money positive">@row.PaidAmount.ToString("N0")</td>
+                        <td class="money @(row.OutstandingAmount > 0 ? "negative" : "positive")">@row.OutstandingAmount.ToString("N0")</td>
+                        <td>@(row.DueDate?.ToString("yyyy/MM/dd") ?? "—")</td>
+                        <td><span class="status @DebtStatusClass(row)">@DebtStatusText(row)</span></td>
+                        <td>@row.ExpenseDate.ToString("yyyy/MM/dd")</td>
+                        <td class="actions wide">
+                            @if (row.OutstandingAmount > 0)
+                            {
+                                <AuthorizeView Roles="Administrator,Accountant">
+                                    <button title="تسجيل دفعة" @onclick="() => StartPayment(row)">💰</button>
+                                </AuthorizeView>
+                            }
+                            <AuthorizeView Roles="Administrator">
+                                <button title="تعديل" @onclick="() => EditExpense(row)">✎</button>
+                                <button class="danger-action" title="حذف آمن" @onclick="() => DeleteExpense(row.Id)">⌫</button>
+                            </AuthorizeView>
+                        </td>
+                    </tr>
+                }
+                @if (overview.Expenses.Count == 0)
+                {
+                    <tr><td colspan="11"><div class="empty-inline">لا توجد خسائر لـ @SelectedFarmName خلال سنة @year.</div></td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel table-panel">
+    <div class="panel-header">
+        <div>
+            <h2>ملخص الديون حسب الدائن</h2>
+            <p>يعرض إجمالي ما يستحقه كل شخص أو مورد خلال السنة المحددة.</p>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>الدائن</th><th>الهاتف</th><th>إجمالي الخسائر</th><th>المسدد</th><th>المتبقي</th><th>ديون مفتوحة</th><th>متأخرة</th></tr></thead>
+            <tbody>
+                @foreach (var row in overview.Creditors)
+                {
+                    <tr>
+                        <td><b>@row.CreditorName</b></td>
+                        <td>@(row.Phone ?? "—")</td>
+                        <td class="money">@row.TotalExpenses.ToString("N0")</td>
+                        <td class="money positive">@row.TotalPaid.ToString("N0")</td>
+                        <td class="money negative">@row.Outstanding.ToString("N0")</td>
+                        <td>@row.OpenDebtCount</td>
+                        <td>@row.OverdueDebtCount</td>
+                    </tr>
+                }
+                @if (overview.Creditors.Count == 0)
+                {
+                    <tr><td colspan="7"><div class="empty-inline">لا توجد ديون مرتبطة بدائنين في السنة المحددة.</div></td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel table-panel">
+    <div class="panel-header"><div><h2>سجل الدائنين</h2><p>تعديل أو حذف الدائن متاح للمدير فقط.</p></div></div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>الاسم</th><th>الهاتف</th><th>العنوان</th><th>الحالة</th><th>العمليات</th></tr></thead>
+            <tbody>
+                @foreach (var creditor in creditors)
+                {
+                    <tr>
+                        <td><b>@creditor.Name</b></td>
+                        <td>@(creditor.Phone ?? "—")</td>
+                        <td>@(creditor.Address ?? "—")</td>
+                        <td><span class="status @(creditor.IsActive ? "paid" : "cancelled")">@(creditor.IsActive ? "نشط" : "متوقف")</span></td>
+                        <td class="actions">
+                            <AuthorizeView Roles="Administrator">
+                                <button title="تعديل" @onclick="() => EditCreditor(creditor)">✎</button>
+                                <button class="danger-action" title="حذف" @onclick="() => DeleteCreditor(creditor.Id)">⌫</button>
+                            </AuthorizeView>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private CultivationExpenseEditorModel expenseModel = NewExpenseModel();
+    private CreditorEditorModel creditorModel = NewCreditorModel();
+    private CultivationDebtPaymentEditorModel paymentModel = new();
+    private CultivationExpenseOverview overview = EmptyOverview();
+    private CultivationExpenseRow? selectedDebt;
+    private List<CultivationDebtPaymentRow> paymentRows = [];
+    private List<Creditor> creditors = [];
+    private List<LookupItem> creditorLookups = [];
+    private List<LookupItem> activeFarms = [];
+    private List<LookupItem> reportFarms = [];
+    private List<LookupItem> expenseTypes = [];
+    private List<int> years = [];
+    private long filterFarmId;
+    private int year = DateTime.Today.Year;
+    private string? message;
+    private string? error;
+
+    private string SelectedFarmName => filterFarmId == 0
+        ? "كل المزارع"
+        : reportFarms.FirstOrDefault(x => x.Id == filterFarmId)?.Name ?? "المزرعة المحددة";
+
+    private string PdfUrl =>
+        $"/reports/cultivation.pdf?farmId={filterFarmId}&year={year}&v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        activeFarms = await Lookups.FarmsAsync();
+        reportFarms = await Lookups.FarmsForReportsAsync();
+        expenseTypes = await Lookups.CultivationExpenseTypesAsync();
+        years = await Lookups.ReportingYearsAsync();
+        if (!years.Contains(year)) years.Insert(0, year);
+        await RefreshCreditors();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        overview = await Service.GetOverviewAsync(filterFarmId == 0 ? null : filterFarmId, year);
+        if (selectedDebt is not null)
+        {
+            var refreshed = overview.Expenses.FirstOrDefault(x => x.Id == selectedDebt.Id);
+            if (refreshed is null || refreshed.OutstandingAmount <= 0)
+                ClosePayment();
+            else
+                selectedDebt = refreshed;
+        }
+    }
+
+    private async Task RefreshCreditors()
+    {
+        creditors = await Service.GetCreditorsAsync(includeInactive: true);
+        creditorLookups = await Lookups.CreditorsAsync();
+    }
+
+    private static CultivationExpenseEditorModel NewExpenseModel() => new()
+    {
+        ExpenseDate = DateTime.Today,
+        PaymentType = CultivationExpensePaymentType.Cash,
+        InitialPaymentMethod = PaymentMethod.Cash
+    };
+
+    private static CreditorEditorModel NewCreditorModel() => new() { IsActive = true };
+
+    private static CultivationExpenseOverview EmptyOverview() => new(
+        [], [], new CultivationAnnualSummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+
+    private void ResetExpense()
+    {
+        expenseModel = NewExpenseModel();
+        message = error = null;
+    }
+
+    private void EditExpense(CultivationExpenseRow row)
+    {
+        expenseModel = new CultivationExpenseEditorModel
+        {
+            Id = row.Id,
+            RowVersion = row.RowVersion,
+            FarmId = row.FarmId,
+            ExpenseTypeId = row.ExpenseTypeId,
+            Amount = row.Amount,
+            ExpenseDate = row.ExpenseDate,
+            PaymentType = row.PaymentType,
+            CreditorId = row.CreditorId,
+            InitialPaidAmount = row.PaidAmount,
+            DueDate = row.DueDate,
+            Notes = row.Notes
+        };
+        message = error = null;
+    }
+
+    private async Task SaveExpense()
+    {
+        try
+        {
+            await Service.SaveAsync(expenseModel);
+            year = expenseModel.ExpenseDate.Year;
+            message = expenseModel.Id == 0 ? "تم حفظ خسارة التربية." : "تم حفظ تعديل الخسارة.";
+            error = null;
+            expenseModel = NewExpenseModel();
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task DeleteExpense(long id)
+    {
+        try
+        {
+            await Service.DeleteAsync(id);
+            message = "تم حذف خسارة التربية ودفعاتها حذفًا آمنًا.";
+            error = null;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task StartPayment(CultivationExpenseRow row)
+    {
+        selectedDebt = row;
+        paymentModel = new CultivationDebtPaymentEditorModel
+        {
+            CultivationExpenseId = row.Id,
+            PaymentDate = DateTime.Today,
+            PaymentMethod = PaymentMethod.Cash,
+            Amount = row.OutstandingAmount
+        };
+        paymentRows = await Service.GetPaymentsAsync(row.Id);
+        message = error = null;
+    }
+
+    private void ClosePayment()
+    {
+        selectedDebt = null;
+        paymentRows = [];
+        paymentModel = new CultivationDebtPaymentEditorModel();
+    }
+
+    private async Task SavePayment()
+    {
+        try
+        {
+            await Service.AddPaymentAsync(paymentModel);
+            message = "تم تسجيل دفعة الدين وتحديث المتبقي.";
+            error = null;
+            await Load();
+            if (selectedDebt is not null)
+            {
+                paymentRows = await Service.GetPaymentsAsync(selectedDebt.Id);
+                paymentModel = new CultivationDebtPaymentEditorModel
+                {
+                    CultivationExpenseId = selectedDebt.Id,
+                    PaymentDate = DateTime.Today,
+                    PaymentMethod = PaymentMethod.Cash,
+                    Amount = selectedDebt.OutstandingAmount
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task DeletePayment(long id)
+    {
+        try
+        {
+            await Service.DeletePaymentAsync(id);
+            message = "تم حذف الدفعة وإعادة احتساب الدين.";
+            error = null;
+            await Load();
+            if (selectedDebt is not null)
+                paymentRows = await Service.GetPaymentsAsync(selectedDebt.Id);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void ResetCreditor()
+    {
+        creditorModel = NewCreditorModel();
+        message = error = null;
+    }
+
+    private void EditCreditor(Creditor creditor)
+    {
+        creditorModel = new CreditorEditorModel
+        {
+            Id = creditor.Id,
+            RowVersion = creditor.RowVersion,
+            Name = creditor.Name,
+            Phone = creditor.Phone,
+            Address = creditor.Address,
+            Notes = creditor.Notes,
+            IsActive = creditor.IsActive
+        };
+    }
+
+    private async Task SaveCreditor()
+    {
+        try
+        {
+            await Service.SaveCreditorAsync(creditorModel);
+            message = creditorModel.Id == 0 ? "تمت إضافة الدائن." : "تم تعديل الدائن.";
+            error = null;
+            creditorModel = NewCreditorModel();
+            await RefreshCreditors();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task DeleteCreditor(long id)
+    {
+        try
+        {
+            await Service.DeleteCreditorAsync(id);
+            message = "تم حذف الدائن حذفًا آمنًا.";
+            error = null;
+            await RefreshCreditors();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private static string PaymentMethodText(PaymentMethod method) => method switch
+    {
+        PaymentMethod.Cash => "نقدًا",
+        PaymentMethod.Transfer => "تحويل",
+        PaymentMethod.Credit => "آجل",
+        _ => "مختلط"
+    };
+
+    private static string DebtStatusText(CultivationExpenseRow row)
+    {
+        if (row.IsOverdue) return "متأخر";
+        return row.DebtStatus switch
+        {
+            CultivationDebtStatus.Unpaid => "غير مدفوع",
+            CultivationDebtStatus.Partial => "مدفوع جزئيًا",
+            CultivationDebtStatus.Paid => "مدفوع بالكامل",
+            _ => "بدون دين"
+        };
+    }
+
+    private static string DebtStatusClass(CultivationExpenseRow row)
+    {
+        if (row.IsOverdue) return "cancelled";
+        return row.DebtStatus switch
+        {
+            CultivationDebtStatus.Paid => "paid",
+            CultivationDebtStatus.Partial => "partial",
+            _ => "unpaid"
+        };
+    }
+}

@@ -1,0 +1,42 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <img class="brand-mark" src="/icons/icon-192.png" alt="شعار عواد سوفت" />
+            <div><strong>نظام زراعي عواد سوفت</strong><span>AWAD SOFT · نظام مالي متكامل</span></div>
+        </div>
+        <NavMenu />
+        <div class="sidebar-footer">
+            <AuthorizeView>
+                <Authorized Context="auth">
+                    <div class="user-mini">
+                        <div class="avatar">@GetInitial(auth.User.Identity?.Name)</div>
+                        <div><b>@auth.User.Identity?.Name</b><small>مستخدم النظام</small></div>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+            <a class="logout-link" href="/account/logout">تسجيل الخروج</a>
+        </div>
+    </aside>
+
+    <main class="main-area">
+        <header class="topbar">
+            <button class="icon-button mobile-only" onclick="toggleSidebar()" aria-label="القائمة">☰</button>
+            <div><div class="welcome">مرحبًا بك في لوحة الإدارة</div><div class="today">@DateTime.Now.ToString("dddd، dd MMMM yyyy")</div></div>
+            <div class="topbar-actions">
+                <button class="icon-button pwa-install-button" onclick="installQatFarmApp()" title="تثبيت التطبيق على الجوال" aria-label="تثبيت التطبيق">⇩</button>
+                <span class="system-status"><i></i> النظام يعمل</span>
+                <a class="icon-button" href="/zakat" title="إشعارات الزكاة">🔔</a>
+                <a class="icon-button" href="/reports" title="التقارير">▤</a>
+            </div>
+        </header>
+        <ZakatNotification />
+        <section class="page-content">@Body</section>
+        <div class="awad-watermark" aria-hidden="true"><strong>AWAD SOFT</strong><span>عواد سوفت</span></div>
+    </main>
+</div>
+
+@code {
+    private static string GetInitial(string? value) => string.IsNullOrWhiteSpace(value) ? "م" : value.Trim()[0].ToString();
+}

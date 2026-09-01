@@ -1,0 +1,17 @@
+/* Local-only offline theme. No CDN, web fonts or remote assets. */
+:root {
+  --offline-primary: #129350;
+  --offline-primary-dark: #0b2d1e;
+  --offline-accent: #c7a343;
+  --offline-danger: #d44b4b;
+  color-scheme: light;
+}
+html, body, button, input, select, textarea {
+  font-family: Tahoma, "Segoe UI", Arial, sans-serif;
+}
+@media print {
+  .sidebar, .topbar, .mobile-only, .btn, button, .zakat-alert-bar { display: none !important; }
+  .app-shell, .main-area, .page-content { display: block !important; width: 100% !important; padding: 0 !important; margin: 0 !important; }
+  .panel, .stat-card { box-shadow: none !important; break-inside: avoid; }
+  body { background: #fff !important; color: #000 !important; }
+}

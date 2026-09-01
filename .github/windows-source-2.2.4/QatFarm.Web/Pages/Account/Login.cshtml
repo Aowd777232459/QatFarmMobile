@@ -1,0 +1,56 @@
+@page "/account/login"
+@model QatFarm.Web.Pages.Account.LoginModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>تسجيل الدخول — نظام زراعي عواد سوفت</title>
+    <style>
+        *{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:"Segoe UI",Tahoma,Arial,sans-serif;color:#10271d;background:#071b13;overflow-x:hidden}
+        body:before,body:after{content:"";position:fixed;border-radius:50%;filter:blur(2px);opacity:.45}body:before{width:620px;height:620px;right:-210px;top:-230px;background:radial-gradient(circle,#55d887 0,rgba(85,216,135,0) 68%)}body:after{width:520px;height:520px;left:-220px;bottom:-230px;background:radial-gradient(circle,#c6a64b 0,rgba(198,166,75,0) 70%)}
+        .screen{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr;position:relative;z-index:2}.visual{padding:70px;display:flex;flex-direction:column;justify-content:space-between;color:white;background:linear-gradient(145deg,rgba(12,63,40,.72),rgba(5,29,20,.35));border-left:1px solid rgba(255,255,255,.08)}
+        .brand{display:flex;align-items:center;gap:16px}.logo{width:68px;height:68px;border-radius:20px;object-fit:cover;box-shadow:0 18px 50px rgba(34,203,107,.28)}.brand h2{margin:0;font-size:22px}.brand p{margin:5px 0 0;color:#b8d5c7}
+        .hero h1{font-size:52px;line-height:1.25;margin:0 0 18px;max-width:690px}.hero h1 span{color:#73e59d}.hero p{font-size:18px;line-height:2;color:#c7dbd1;max-width:650px}.features{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:35px}.feature{padding:18px;border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.055);backdrop-filter:blur(12px);border-radius:18px}.feature b{display:block;color:#fff;margin-bottom:7px}.feature small{color:#accbbb;line-height:1.7}
+        .login-side{display:grid;place-items:center;padding:35px;background:#f2f7f4}.card{width:min(480px,100%);background:white;border-radius:30px;padding:44px;box-shadow:0 35px 90px rgba(1,38,20,.18);border:1px solid #e5eee8}.card .badge{display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:20px;color:#08743f;background:#eaf9f0;font-weight:700;font-size:13px}.card h2{font-size:31px;margin:19px 0 8px}.subtitle{color:#718078;margin:0 0 28px}.field{margin-bottom:18px}.field label{display:block;font-weight:700;margin-bottom:8px}.input-wrap{position:relative}.input-wrap span{position:absolute;right:15px;top:50%;transform:translateY(-50%);color:#4c6b5b}.input{width:100%;height:54px;border:1px solid #dce7e0;border-radius:15px;padding:0 47px 0 15px;font-size:15px;outline:none;transition:.2s;background:#fbfdfc}.input:focus{border-color:#24a85f;box-shadow:0 0 0 4px rgba(36,168,95,.11);background:white}.row{display:flex;align-items:center;justify-content:space-between;margin:4px 0 22px;color:#52665b}.remember{display:flex;align-items:center;gap:8px}.button{width:100%;height:57px;border:none;border-radius:16px;color:white;font-weight:800;font-size:17px;cursor:pointer;background:linear-gradient(135deg,#178d4b,#0b6938);box-shadow:0 14px 35px rgba(16,126,67,.27)}.button:hover{transform:translateY(-1px)}.validation{padding:12px 14px;border-radius:13px;color:#a62e2e;background:#fff0f0;margin-bottom:17px;font-size:14px}.hint{margin-top:22px;padding-top:19px;border-top:1px solid #edf1ee;color:#849088;font-size:12px;text-align:center}.login-watermark{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%) rotate(-15deg);z-index:3;text-align:center;pointer-events:none;opacity:.035;color:#fff;font-weight:900;white-space:nowrap}.login-watermark strong,.login-watermark span{display:block}.login-watermark strong{font-size:clamp(70px,12vw,180px);letter-spacing:8px}.login-watermark span{font-size:clamp(30px,5vw,72px);margin-top:8px}
+        @@media(max-width:980px){.screen{grid-template-columns:1fr}.visual{display:none}.login-side{min-height:100vh;padding:20px}.card{padding:30px 24px;border-radius:24px}}
+    </style>
+</head>
+<body>
+<div class="login-watermark" aria-hidden="true"><strong>AWAD SOFT</strong><span>عواد سوفت</span></div>
+<div class="screen">
+    <section class="visual">
+        <div class="brand"><img class="logo" src="/icons/icon-192.png" alt="شعار عواد سوفت" /><div><h2>نظام زراعي عواد سوفت</h2><p>AWAD SOFT · إدارة مالية وزراعية دقيقة وآمنة</p></div></div>
+        <div class="hero">
+            <h1>كل مزرعة، وكل مصروف، وكل فاتورة <span>تحت السيطرة.</span></h1>
+            <p>تابع خسائر التربية والمحاصيل والمبيعات والزكاة والمصروفات وصافي الأرباح من لوحة عربية حديثة تعمل على الكمبيوتر والجوال.</p>
+            <div class="features">
+                <div class="feature"><b>حسابات دقيقة</b><small>الزكاة والصافي والمتبقي محسوبة آليًا.</small></div>
+                <div class="feature"><b>تقارير PDF</b><small>يومية وشهرية وسنوية لكل مزرعة.</small></div>
+                <div class="feature"><b>حماية وتدقيق</b><small>صلاحيات وسجل تعديلات ومنع الحذف العشوائي.</small></div>
+            </div>
+        </div>
+        <div style="color:#8fb5a2">© @DateTime.Now.Year AWAD SOFT — عواد سوفت</div>
+    </section>
+    <section class="login-side">
+        <form method="post" class="card">
+            <div class="badge">● بوابة دخول آمنة</div>
+            <h2>مرحبًا بعودتك</h2>
+            <p class="subtitle">أدخل البريد الإلكتروني وكلمة المرور للمتابعة.</p>
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage)) { <div class="validation">@Model.ErrorMessage</div> }
+            <div asp-validation-summary="ModelOnly" class="validation"></div>
+            <input type="hidden" asp-for="ReturnUrl" />
+            <div class="field"><label asp-for="Input.Email">البريد الإلكتروني</label><div class="input-wrap"><span>✉</span><input class="input" asp-for="Input.Email" autocomplete="username" placeholder="name@example.com" /></div></div>
+            <div class="field"><label asp-for="Input.Password">كلمة المرور</label><div class="input-wrap"><span>⌘</span><input class="input" asp-for="Input.Password" autocomplete="current-password" placeholder="••••••••••" /></div></div>
+            <div class="row"><label class="remember"><input asp-for="Input.RememberMe" /> تذكرني</label><small>خمسة محاولات فقط قبل القفل</small></div>
+            <button class="button" type="submit">دخول إلى النظام ←</button>
+            <div class="hint">تُشفّر كلمات المرور باستخدام ASP.NET Core Identity، ولا يتم تخزينها كنص مكشوف.</div>
+        </form>
+    </section>
+</div>
+<script src="/js/ui-preferences.js"></script>
+</body>
+</html>

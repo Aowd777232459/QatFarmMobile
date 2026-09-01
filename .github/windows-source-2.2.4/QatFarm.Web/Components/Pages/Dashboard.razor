@@ -1,0 +1,98 @@
+@page "/"
+@attribute [Authorize]
+@inject DashboardService DashboardData
+
+<PageTitle>لوحة التحكم المالية</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">مركز القرار المالي</span><h1>لوحة التحكم المالية</h1><p>المبيعات، الأرباح، العملاء، الديون، والزكاة في شاشة واحدة.</p></div>
+    <div class="heading-actions"><a class="btn btn-secondary" href="/customers">العملاء والديون</a><a class="btn btn-primary" href="/sales/new">＋ إنشاء فاتورة بيع</a></div>
+</div>
+
+<section class="awad-farm-hero">
+    <img src="/images/qat_vip_hero.jpg" alt="مزرعة قات" />
+    <div class="awad-farm-hero-overlay">
+        <span>AWAD SOFT</span>
+        <h2>نظام زراعي عواد سوفت</h2>
+        <p>إدارة زراعية ومحاسبية احترافية من المزرعة حتى القيد المالي.</p>
+    </div>
+</section>
+
+@if (loading)
+{
+    <div class="loading-card">جارٍ تحليل المؤشرات المالية…</div>
+}
+else if (summary is not null)
+{
+    @if (summary.PendingZakatCount > 0)
+    {
+        <a class="dashboard-zakat-warning" href="/zakat"><span>!</span><div><b>@summary.PendingZakatCount إشعار زكاة يحتاج تأكيد الدفع</b><small>الإجمالي @Money(summary.PendingZakat) — التنبيه مستمر حتى الاعتماد</small></div><strong>فتح الزكاة ←</strong></a>
+    }
+
+    <div class="stats-grid legendary-stats">
+        <div class="stat-card green"><div class="stat-icon">↗</div><span>مبيعات اليوم</span><strong>@Money(summary.TodaySales)</strong><small>@summary.TodayInvoices فاتورة اليوم</small></div>
+        <div class="stat-card blue"><div class="stat-icon">◆</div><span>صافي اليوم</span><strong>@Money(summary.TodayNet)</strong><small>بعد الزكاة والمصروفات</small></div>
+        <div class="stat-card gold"><div class="stat-icon">▣</div><span>مبيعات الشهر</span><strong>@Money(summary.MonthSales)</strong><small class="@(summary.MonthGrowthPercent >= 0 ? "positive" : "negative")">@summary.MonthGrowthPercent.ToString("N1")% عن الشهر السابق</small></div>
+        <div class="stat-card red"><div class="stat-icon">◷</div><span>إجمالي الديون</span><strong>@Money(summary.Receivables)</strong><small>@Money(summary.OverdueReceivables) متأخرة</small></div>
+    </div>
+
+    <div class="executive-grid">
+        <section class="panel executive-card">
+            <span>صافي الشهر</span><strong>@Money(summary.MonthNet)</strong><small>بعد زكاة ومصروفات الفواتير</small>
+        </section>
+        <section class="panel executive-card"><span>مبيعات السنة</span><strong>@Money(summary.YearSales)</strong><small>المحصل فعليًا @Money(summary.YearCollectedSales)</small></section>
+        <section class="panel executive-card"><span>الربح المحاسبي السنوي</span><strong>@Money(summary.AccountingProfitYear)</strong><small>بعد كامل خسائر التربية مرة واحدة</small></section>
+        <section class="panel executive-card"><span>الربح الآمن للتوزيع</span><strong>@Money(summary.SafeDistributableProfitYear)</strong><small>من النقد المحصل بعد حجز الالتزامات</small></section>
+        <section class="panel executive-card"><span>خسائر التربية</span><strong>@Money(summary.CultivationLosses)</strong><small>المسدد @Money(summary.CultivationPaid)</small></section>
+        <section class="panel executive-card"><span>ديون التربية</span><strong class="@(summary.CultivationDebt > 0 ? "negative" : "positive")">@Money(summary.CultivationDebt)</strong><small>@Money(summary.CultivationOverdueDebt) متأخرة</small></section>
+        <section class="panel executive-card"><span>العملاء النشطون</span><strong>@summary.CustomerCount</strong><small>عملاء مرتبطون بالفواتير وكشوف الحساب</small></section>
+        <section class="panel executive-card"><span>المزارع النشطة</span><strong>@summary.FarmCount</strong><small>بيانات كل مزرعة مستقلة سنويًا</small></section>
+    </div>
+
+    <div class="dashboard-grid dashboard-grid-wide">
+        <section class="panel chart-panel">
+            <div class="panel-header"><div><h2>أداء آخر ستة أشهر</h2><p>المبيعات والصافي بحسب الشهر</p></div><a href="/reports">عرض التقارير</a></div>
+            <div class="bar-chart">
+                @foreach (var point in trend)
+                {
+                    <div class="bar-group" title="@($"المبيعات: {point.Sales:N0} — المصروفات: {point.Expenses:N0} — الصافي: {point.Net:N0}")">
+                        <div class="bars"><div class="bar sales" style="height:@Height(point.Sales)%"></div><div class="bar expenses" style="height:@Height(point.Expenses)%"></div><div class="bar net" style="height:@Height(point.Net)%"></div></div>
+                        <span>@point.Label</span>
+                    </div>
+                }
+            </div>
+            <div class="legend"><span><i class="legend-sales"></i> المبيعات</span><span><i class="legend-expenses"></i> المصروفات</span><span><i class="legend-net"></i> الصافي</span></div>
+        </section>
+
+        <section class="panel intelligence-panel">
+            <div class="panel-header"><div><h2>مؤشرات الأعمال</h2><p>أفضل مؤشرات الشهر الحالي</p></div></div>
+            <div class="winner-card"><span>أفضل مزرعة بالمبيعات</span><b>@summary.TopFarm</b></div>
+            <div class="winner-card"><span>أكثر صنف مبيعًا</span><b>@summary.TopQatType</b></div>
+            <div class="risk-card @(summary.OverdueReceivables > 0 ? "has-risk" : "")"><span>ديون العملاء المتأخرة</span><b>@Money(summary.OverdueReceivables)</b><a href="/customers">فتح حسابات العملاء</a></div>
+            <div class="risk-card @(summary.CultivationOverdueDebt > 0 ? "has-risk" : "")"><span>ديون التربية المتأخرة</span><b>@Money(summary.CultivationOverdueDebt)</b><a href="/cultivation-expenses">فتح ديون التربية</a></div>
+        </section>
+    </div>
+
+    <section class="panel quick-actions-grid">
+        <a href="/sales/new"><span>＋</span><div><b>فاتورة متعددة الأصناف</b><small>أصناف ومصروفات بلا حد داخل فاتورة واحدة</small></div></a>
+        <a href="/customers"><span>♙</span><div><b>كشف حساب عميل</b><small>مشتريات، مدفوعات، ديون، واستحقاقات</small></div></a>
+        <a href="/zakat"><span>%</span><div><b>اعتماد دفع الزكاة</b><small>إغلاق الإشعارات المعلقة بعد الدفع فقط</small></div></a>
+        <a href="/cultivation-expenses"><span>↘</span><div><b>خسائر التربية</b><small>تسجيل التكلفة الفعلية للمزرعة</small></div></a>
+    </section>
+}
+
+@code {
+    private DashboardSummary? summary;
+    private List<MonthlyPoint> trend = [];
+    private bool loading = true;
+    private decimal maxValue = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        summary = await DashboardData.GetSummaryAsync();
+        trend = await DashboardData.GetLastSixMonthsAsync();
+        maxValue = Math.Max(1, trend.SelectMany(x => new[] { x.Sales, x.Expenses, x.Net }).DefaultIfEmpty(1).Max());
+        loading = false;
+    }
+    private static string Money(decimal value) => $"{value:N0} ر.ي";
+    private decimal Height(decimal value) => Math.Max(2, Math.Abs(value) / maxValue * 100m);
+}

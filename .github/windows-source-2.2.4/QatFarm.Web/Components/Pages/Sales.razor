@@ -1,0 +1,125 @@
+@page "/sales/new"
+@page "/sales/edit/{InvoiceId:long}"
+@attribute [Authorize]
+@inject InvoiceService Service
+@inject LookupService Lookups
+@inject NavigationManager Navigation
+
+<PageTitle>@(InvoiceId.HasValue ? "تعديل فاتورة" : "فاتورة بيع جديدة")</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">بداية المحصول</span><h1>@(InvoiceId.HasValue ? "تعديل فاتورة البيع" : "إنشاء فاتورة بيع متعددة الأصناف")</h1><p>أضف عدة أصناف وعدة مصروفات، واربط البيع بالعميل لمتابعة الدين.</p></div><a class="btn btn-ghost" href="/invoices">العودة للفواتير</a></div>
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+
+<EditForm Model="model" OnValidSubmit="Save"><DataAnnotationsValidator /><ValidationSummary class="validation-summary" />
+<div class="invoice-layout">
+    <div class="invoice-main">
+        <section class="panel">
+            <div class="panel-header"><div><span class="step">1</span><h2>بيانات البيع والعميل</h2><p>اختيار عميل مسجل إلزامي للبيع الآجل.</p></div><a class="btn btn-small btn-outline" href="/customers">إدارة العملاء</a></div>
+            <div class="form-grid cols-3">
+                <div class="field"><label>المزرعة *</label><InputSelect class="form-control" @bind-Value="model.FarmId"><option value="0">اختر المزرعة</option>@foreach (var x in farms) { <option value="@x.Id">@x.Name</option> }</InputSelect></div>
+                <div class="field"><label>العميل المسجل</label><InputSelect class="form-control" @bind-Value="model.CustomerId" @bind-Value:after="CustomerChanged"><option value="">بيع مباشر بدون حساب عميل</option>@foreach (var x in customers) { <option value="@x.Id">@x.Name</option> }</InputSelect></div>
+                <div class="field"><label>تاريخ الفاتورة</label><InputDate class="form-control" @bind-Value="model.InvoiceDate" /></div>
+                <div class="field"><label>تاريخ استحقاق الدين</label><InputDate class="form-control" @bind-Value="model.PaymentDueDate" disabled="@(!model.CustomerId.HasValue)" /></div>
+                <div class="field"><label>اسم مشتري غير مسجل</label><InputText class="form-control" @bind-Value="model.BuyerName" disabled="@model.CustomerId.HasValue" /></div>
+                <div class="field"><label>هاتف المشتري</label><InputText class="form-control" @bind-Value="model.BuyerPhone" disabled="@model.CustomerId.HasValue" /></div>
+                <div class="field"><label>طريقة السداد</label><InputSelect class="form-control" @bind-Value="model.PaymentMethod" disabled="@(!model.CustomerId.HasValue)"><option value="@PaymentMethod.Cash">نقدي</option><option value="@PaymentMethod.Transfer">تحويل</option><option value="@PaymentMethod.Credit">آجل</option><option value="@PaymentMethod.Mixed">مختلط</option></InputSelect></div>
+                <div class="field"><label>المبلغ المدفوع</label>@if (model.CustomerId.HasValue) { <InputNumber class="form-control" @bind-Value="model.AmountPaid" /> } else { <input class="form-control" value="@Gross.ToString("N0")" disabled /> }</div>
+            </div>
+            @if (model.PaymentMethod == PaymentMethod.Credit && !model.CustomerId.HasValue) { <div class="inline-warning">البيع الآجل يتطلب اختيار عميل مسجل حتى يمكن متابعة الدين والدفعات.</div> }
+            @if (!model.CustomerId.HasValue) { <div class="inline-warning">البيع لغير عميل مسجل نقدي ومدفوع بالكامل فقط؛ يضبط النظام المبلغ تلقائيًا.</div> }
+        </section>
+
+        <section class="panel">
+            <div class="panel-header"><div><span class="step">2</span><h2>أصناف المحصول</h2><p>يمكن بيع أكثر من صنف في الفاتورة الواحدة.</p></div><button type="button" class="btn btn-small btn-outline" @onclick="AddItem">＋ إضافة صنف آخر</button></div>
+            <div class="table-responsive"><table class="data-table editor-table"><thead><tr><th>#</th><th>نوع القات</th><th>الكمية بالعدد</th><th>سعر الوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody>
+            @for (var index = 0; index < model.Items.Count; index++)
+            {
+                var item = model.Items[index];
+                <tr @key="item"><td>@(index + 1)</td><td><InputSelect class="form-control" @bind-Value="item.QatTypeId"><option value="0">اختر النوع</option>@foreach (var x in qatTypes) { <option value="@x.Id">@x.Name</option> }</InputSelect></td><td><InputNumber class="form-control" @bind-Value="item.Quantity" /></td><td><InputNumber class="form-control" @bind-Value="item.UnitPrice" /></td><td class="money positive">@item.Total.ToString("N0")</td><td class="actions"><button type="button" class="danger-action" disabled="@(model.Items.Count == 1)" @onclick="() => RemoveItem(item)">×</button></td></tr>
+            }
+            </tbody></table></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header"><div><span class="step">3</span><h2>المصروفات اليومية</h2><p>أضف أي عدد من المصروفات وسيتم جمعها آليًا.</p></div><button type="button" class="btn btn-small btn-outline" @onclick="AddExpense">＋ إضافة مصروف آخر</button></div>
+            @if (model.Expenses.Count == 0) { <div class="empty-inline padded">لم تُضف مصروفات لهذه الفاتورة.</div> }
+            else
+            {
+                <div class="table-responsive"><table class="data-table editor-table"><thead><tr><th>#</th><th>نوع المصروف</th><th>المبلغ</th><th>البيان</th><th></th></tr></thead><tbody>
+                @for (var index = 0; index < model.Expenses.Count; index++)
+                {
+                    var expense = model.Expenses[index];
+                    <tr @key="expense"><td>@(index + 1)</td><td><InputSelect class="form-control" @bind-Value="expense.ExpenseTypeId"><option value="0">اختر النوع</option>@foreach (var x in expenseTypes) { <option value="@x.Id">@x.Name</option> }</InputSelect></td><td><InputNumber class="form-control" @bind-Value="expense.Amount" /></td><td><InputText class="form-control" @bind-Value="expense.Notes" /></td><td class="actions"><button type="button" class="danger-action" @onclick="() => RemoveExpense(expense)">×</button></td></tr>
+                }
+                </tbody></table></div>
+            }
+        </section>
+
+        <section class="panel"><div class="field"><label>ملاحظات الفاتورة</label><InputTextArea class="form-control textarea" @bind-Value="model.Notes" /></div></section>
+    </div>
+
+    <aside class="invoice-summary panel">
+        <div class="summary-title"><div class="summary-mark">ق</div><div><b>ملخص الفاتورة</b><small>@model.Items.Count صنف — @model.Expenses.Count مصروف</small></div></div>
+        <div class="summary-row"><span>إجمالي البيع</span><strong>@Gross.ToString("N0") ر.ي</strong></div>
+        <div class="zakat-control"><label>نسبة الزكاة قبل المصروفات</label><div><InputNumber class="form-control" @bind-Value="model.ZakatPercent" /><span>%</span></div></div>
+        <div class="summary-row gold-text"><span>قيمة الزكاة</span><strong>@Zakat.ToString("N0") ر.ي</strong></div>
+        <div class="zakat-pending-note">بعد الحفظ سيظهر إشعار الزكاة ولن يختفي حتى تأكيد دفعها.</div>
+        <div class="summary-row red-text"><span>إجمالي المصروفات</span><strong>@Expenses.ToString("N0") ر.ي</strong></div>
+        <div class="summary-total"><span>صافي العملية</span><strong>@Net.ToString("N0")</strong><small>ريال يمني</small></div>
+        <div class="payment-box"><div><span>المدفوع</span><b>@EffectivePaid.ToString("N0")</b></div><div><span>المتبقي</span><b>@Due.ToString("N0")</b></div></div>
+        <div class="formula">الصافي = البيع − الزكاة − المصروفات</div>
+        <button class="btn btn-primary btn-block" type="submit" disabled="@saving">@(saving ? "جارٍ الحفظ…" : InvoiceId.HasValue ? "حفظ التعديلات" : "حفظ وإنشاء الفاتورة")</button>
+        <button class="btn btn-ghost btn-block" type="button" @onclick="Reset">تفريغ الحقول</button>
+    </aside>
+</div>
+</EditForm>
+
+@code {
+    [Parameter] public long? InvoiceId { get; set; }
+    private InvoiceEditorModel model = new();
+    private List<LookupItem> farms = [], customers = [], qatTypes = [], expenseTypes = [];
+    private string? error;
+    private bool saving;
+    private decimal Gross => model.Items.Sum(x => x.Total);
+    private decimal Zakat => decimal.Round(Gross * model.ZakatPercent / 100m, 2, MidpointRounding.AwayFromZero);
+    private decimal Expenses => model.Expenses.Sum(x => x.Amount);
+    private decimal Net => Gross - Zakat - Expenses;
+    private decimal EffectivePaid => model.CustomerId.HasValue ? model.AmountPaid : Gross;
+    private decimal Due => Math.Max(0, Gross - EffectivePaid);
+
+    protected override async Task OnInitializedAsync()
+    {
+        farms = await Lookups.FarmsAsync();
+        customers = await Lookups.CustomersAsync();
+        qatTypes = await Lookups.QatTypesAsync();
+        expenseTypes = await Lookups.DailyExpenseTypesAsync();
+        if (InvoiceId.HasValue) model = await Service.GetEditorAsync(InvoiceId.Value) ?? new InvoiceEditorModel();
+    }
+    private void AddItem() => model.Items.Add(new InvoiceItemEditorModel());
+    private void RemoveItem(InvoiceItemEditorModel item) { if (model.Items.Count > 1) model.Items.Remove(item); }
+    private void AddExpense() => model.Expenses.Add(new InvoiceExpenseEditorModel());
+    private void CustomerChanged()
+    {
+        if (model.CustomerId.HasValue) return;
+        model.PaymentMethod = PaymentMethod.Cash;
+        model.PaymentDueDate = null;
+        model.AmountPaid = Gross;
+    }
+    private void RemoveExpense(InvoiceExpenseEditorModel item) => model.Expenses.Remove(item);
+    private void Reset() { if (InvoiceId.HasValue) Navigation.NavigateTo("/sales/new"); else { model = new InvoiceEditorModel(); error = null; } }
+    private async Task Save()
+    {
+        if (saving) return;
+        try
+        {
+            saving = true;
+            error = null;
+            var id = await Service.SaveAsync(model);
+            Navigation.NavigateTo($"/invoices?invoice={id}");
+        }
+        catch (Exception ex)
+        {
+            error = ex.InnerException?.Message ?? ex.Message;
+            saving = false;
+        }
+    }
+}

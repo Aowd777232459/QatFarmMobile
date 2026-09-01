@@ -1,0 +1,96 @@
+@page "/customers/{CustomerId:long}"
+@attribute [Authorize]
+@inject CustomerService Service
+
+<PageTitle>كشف حساب العميل</PageTitle>
+@if (details is null)
+{
+    <div class="loading-card">جارٍ تحميل كشف الحساب…</div>
+}
+else
+{
+    <div class="page-heading">
+        <div><span class="eyebrow">كشف حساب تفصيلي</span><h1>@details.Customer.Name</h1><p>@(details.Customer.Phone ?? "بدون هاتف") — @(details.Customer.Region ?? "بدون منطقة")</p></div>
+        <div class="heading-actions"><a class="btn btn-outline" target="_blank" href="@($"/reports/customer/{CustomerId}.pdf")">تصدير PDF</a><a class="btn btn-ghost" href="/customers">العودة للعملاء</a></div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert success">@message</div> }
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+
+    <div class="customer-kpis detail-kpis">
+        <div><span>إجمالي المشتريات</span><b>@details.TotalPurchases.ToString("N0") ر.ي</b></div>
+        <div><span>إجمالي المدفوع</span><b class="positive">@details.TotalPaid.ToString("N0") ر.ي</b></div>
+        <div><span>الرصيد المتبقي</span><b class="red-text">@details.Outstanding.ToString("N0") ر.ي</b></div>
+        <div><span>ديون متأخرة</span><b class="red-text">@details.Overdue.ToString("N0") ر.ي</b></div>
+    </div>
+
+    <div class="customer-detail-grid">
+        <section class="panel">
+            <div class="panel-header"><div><h2>تسجيل دفعة جديدة</h2><p>تُخفض الدفعة رصيد الفاتورة مباشرة.</p></div></div>
+            <EditForm Model="payment" OnValidSubmit="AddPayment">
+                <DataAnnotationsValidator /><ValidationSummary class="validation-summary" />
+                <div class="form-grid one">
+                    <div class="field"><label>الفاتورة</label><InputSelect class="form-control" @bind-Value="payment.InvoiceId"><option value="">سداد من الرصيد السابق</option>@foreach (var x in details.Invoices.Where(x => x.Status == InvoiceStatus.Posted && x.AmountDue > 0)) { <option value="@x.Id">@x.InvoiceNumber — متبقي @x.AmountDue.ToString("N0")</option> }</InputSelect></div>
+                    <div class="field"><label>المبلغ *</label><InputNumber class="form-control" @bind-Value="payment.Amount" /></div>
+                    <div class="field"><label>تاريخ الدفع</label><InputDate class="form-control" @bind-Value="payment.PaymentDate" /></div>
+                    <div class="field"><label>طريقة الدفع</label><InputSelect class="form-control" @bind-Value="payment.PaymentMethod"><option value="@PaymentMethod.Cash">نقدي</option><option value="@PaymentMethod.Transfer">تحويل</option><option value="@PaymentMethod.Mixed">مختلط</option></InputSelect></div>
+                    <div class="field"><label>رقم المرجع</label><InputText class="form-control" @bind-Value="payment.ReferenceNumber" /></div>
+                    <div class="field"><label>ملاحظات</label><InputTextArea class="form-control textarea" @bind-Value="payment.Notes" /></div>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit">حفظ سند القبض</button>
+            </EditForm>
+        </section>
+
+        <section class="panel table-panel">
+            <div class="panel-header"><div><h2>الفواتير</h2><p>جميع مشتريات العميل</p></div></div>
+            <div class="table-responsive"><table class="data-table"><thead><tr><th>الفاتورة</th><th>التاريخ</th><th>الاستحقاق</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th></tr></thead><tbody>
+            @foreach (var x in details.Invoices)
+            {
+                <tr><td><a href="@($"/sales/edit/{x.Id}")"><code>@x.InvoiceNumber</code></a></td><td>@x.InvoiceDate.ToString("yyyy/MM/dd")</td><td>@(x.PaymentDueDate?.ToString("yyyy/MM/dd") ?? "—")</td><td class="money">@x.GrossAmount.ToString("N0")</td><td class="money positive">@x.AmountPaid.ToString("N0")</td><td class="money negative">@x.AmountDue.ToString("N0")</td><td><span class="status @(x.PaymentStatus == PaymentStatus.Paid ? "paid" : x.PaymentStatus == PaymentStatus.Partial ? "partial" : "unpaid")">@PaymentText(x.PaymentStatus)</span></td></tr>
+            }
+            @if (details.Invoices.Count == 0) { <tr><td colspan="7"><div class="empty-inline">لا توجد فواتير.</div></td></tr> }
+            </tbody></table></div>
+        </section>
+    </div>
+
+    <section class="panel table-panel customer-payments-panel">
+        <div class="panel-header"><div><h2>سجل الدفعات</h2><p>سندات القبض المسجلة</p></div></div>
+        <div class="table-responsive"><table class="data-table"><thead><tr><th>التاريخ</th><th>الفاتورة</th><th>المبلغ</th><th>طريقة الدفع</th><th>المرجع</th><th>ملاحظات</th></tr></thead><tbody>
+        @foreach (var x in details.Payments)
+        {
+            <tr><td>@x.PaymentDate.ToString("yyyy/MM/dd")</td><td>@(x.InvoiceNumber ?? "رصيد سابق")</td><td class="money positive">@x.Amount.ToString("N0")</td><td>@MethodText(x.PaymentMethod)</td><td>@(x.ReferenceNumber ?? "—")</td><td>@(x.Notes ?? "—")</td></tr>
+        }
+        @if (details.Payments.Count == 0) { <tr><td colspan="6"><div class="empty-inline">لا توجد دفعات مسجلة.</div></td></tr> }
+        </tbody></table></div>
+    </section>
+}
+
+@code {
+    [Parameter] public long CustomerId { get; set; }
+    private CustomerDetailsModel? details;
+    private CustomerPaymentEditorModel payment = new();
+    private string? message;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+    private async Task Load()
+    {
+        details = await Service.GetDetailsAsync(CustomerId);
+        payment = new CustomerPaymentEditorModel { CustomerId = CustomerId, PaymentDate = DateTime.Today };
+    }
+
+    private async Task AddPayment()
+    {
+        try
+        {
+            await Service.AddPaymentAsync(payment);
+            message = "تم تسجيل الدفعة وتحديث رصيد العميل.";
+            error = null;
+            await Load();
+        }
+        catch (Exception ex) { error = ex.InnerException?.Message ?? ex.Message; }
+    }
+
+    private static string PaymentText(PaymentStatus status) => status switch { PaymentStatus.Paid => "مسددة", PaymentStatus.Partial => "جزئي", _ => "غير مسددة" };
+    private static string MethodText(PaymentMethod method) => method switch { PaymentMethod.Transfer => "تحويل", PaymentMethod.Credit => "آجل", PaymentMethod.Mixed => "مختلط", _ => "نقدي" };
+}

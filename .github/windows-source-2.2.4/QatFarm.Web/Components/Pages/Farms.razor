@@ -1,0 +1,66 @@
+@page "/farms"
+@attribute [Authorize]
+@inject FarmService Service
+
+<PageTitle>إدارة المزارع</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">البيانات الأساسية</span><h1>إدارة المزارع</h1><p>افصل عمليات كل مزرعة وتقاريرها عن المزارع الأخرى.</p></div>
+    <button class="btn btn-primary" @onclick="NewFarm">＋ مزرعة جديدة</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="alert success">@message</div> }
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+
+<div class="split-layout">
+    <section class="panel form-panel">
+        <div class="panel-header"><div><h2>@(model.Id == 0 ? "إضافة مزرعة" : "تعديل المزرعة")</h2><p>أدخل البيانات الأساسية بدقة.</p></div></div>
+        <EditForm Model="model" OnValidSubmit="Save">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+            <div class="form-grid one">
+                <div class="field"><label>اسم المزرعة *</label><InputText class="form-control" @bind-Value="model.Name" placeholder="مثال: مزرعة الوادي" /></div>
+                <div class="field"><label>اسم المالك</label><InputText class="form-control" @bind-Value="model.OwnerName" /></div>
+                <div class="field"><label>الموقع</label><InputText class="form-control" @bind-Value="model.Location" /></div>
+                <div class="field"><label>رقم الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
+                <div class="field"><label>ملاحظات</label><InputTextArea class="form-control textarea" @bind-Value="model.Notes" /></div>
+                <label class="switch-line"><InputCheckbox @bind-Value="model.IsActive" /><span>المزرعة نشطة</span></label>
+            </div>
+            <div class="form-actions"><button class="btn btn-primary" type="submit">حفظ البيانات</button><button class="btn btn-ghost" type="button" @onclick="NewFarm">إلغاء</button></div>
+        </EditForm>
+    </section>
+
+    <section class="panel table-panel">
+        <div class="panel-header"><div><h2>قائمة المزارع</h2><p>@farms.Count مزرعة مسجلة</p></div><div class="search-box"><span>⌕</span><input @bind="search" @bind:event="oninput" @onkeyup="Search" placeholder="بحث بالاسم أو المالك" /></div></div>
+        <div class="table-responsive"><table class="data-table"><thead><tr><th>المزرعة</th><th>المالك</th><th>الموقع</th><th>الهاتف</th><th>الحالة</th><th></th></tr></thead><tbody>
+            @foreach (var farm in farms)
+            {
+                <tr><td><b>@farm.Name</b></td><td>@(farm.OwnerName ?? "—")</td><td>@(farm.Location ?? "—")</td><td>@(farm.Phone ?? "—")</td><td><span class="status @(farm.IsActive ? "paid" : "cancelled")">@(farm.IsActive ? "نشطة" : "متوقفة")</span></td><td class="actions"><button title="تعديل" @onclick="() => Edit(farm)">✎</button><AuthorizeView Roles="Administrator"><button class="danger-action" title="إيقاف المزرعة مع حفظ تاريخها" @onclick="() => Delete(farm.Id)">⌫</button></AuthorizeView></td></tr>
+            }
+            @if (farms.Count == 0) { <tr><td colspan="6"><div class="empty-inline">لا توجد مزارع مطابقة.</div></td></tr> }
+        </tbody></table></div>
+    </section>
+</div>
+
+@code {
+    private List<Farm> farms = [];
+    private Farm model = NewModel();
+    private string search = string.Empty;
+    private string? message;
+    private string? error;
+    protected override async Task OnInitializedAsync() => await Load();
+    private static Farm NewModel() => new() { IsActive = true };
+    private async Task Load() => farms = await Service.GetAllAsync(search);
+    private async Task Search() => await Load();
+    private void NewFarm() { model = NewModel(); message = error = null; }
+    private void Edit(Farm x) => model = new Farm { Id = x.Id, Name = x.Name, OwnerName = x.OwnerName, Location = x.Location, Phone = x.Phone, Notes = x.Notes, IsActive = x.IsActive, RowVersion = x.RowVersion };
+    private async Task Save()
+    {
+        try { await Service.SaveAsync(model); message = "تم حفظ بيانات المزرعة بنجاح."; error = null; model = NewModel(); await Load(); }
+        catch (Exception ex) { error = ex.InnerException?.Message ?? ex.Message; }
+    }
+    private async Task Delete(long id)
+    {
+        try { await Service.DeleteAsync(id); message = "تم إيقاف المزرعة مع الاحتفاظ بجميع فواتيرها وتقاريرها."; await Load(); }
+        catch (Exception ex) { error = "تعذر إيقاف المزرعة. " + ex.Message; }
+    }
+}

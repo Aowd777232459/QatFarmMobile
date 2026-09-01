@@ -1,0 +1,126 @@
+@page "/reports"
+@attribute [Authorize]
+@inject LookupService Lookups
+
+<PageTitle>التقارير السنوية</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">الأرشيف المالي السنوي</span>
+        <h1>تقارير المزرعة حسب السنة</h1>
+        <p>اختر اسم المزرعة والسنة فقط، وسيُنشئ النظام تقريرًا مستقلًا لكل سنة.</p>
+    </div>
+</div>
+
+<section class="panel report-filter">
+    <div class="panel-header">
+        <div>
+            <h2>اختيار التقرير السنوي</h2>
+            <p>لا توجد فترات من وإلى؛ كل تقرير يغطي السنة المختارة كاملة من 1 يناير إلى 31 ديسمبر.</p>
+        </div>
+    </div>
+
+    <div class="form-grid cols-2">
+        <div class="field">
+            <label>اسم المزرعة</label>
+            <select class="form-control" @bind="farmId">
+                <option value="0">كل المزارع</option>
+                @foreach (var farm in farms)
+                {
+                    <option value="@farm.Id">@farm.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="field">
+            <label>السنة</label>
+            <select class="form-control" @bind="year">
+                @foreach (var item in years)
+                {
+                    <option value="@item">@item</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="annual-report-summary">
+        <b>@SelectedFarmName</b>
+        <span>سنة @year</span>
+    </div>
+</section>
+
+<div class="report-cards">
+    <a class="report-card sales-report" target="_blank" href="@SalesUrl">
+        <span class="report-icon">▥</span>
+        <div>
+            <h2>الفواتير التفصيلية للسنة</h2>
+            <p>كل فاتورة مع العميل وجميع الأصناف والكميات والأسعار والمصروفات والزكاة والسداد.</p>
+            <b>إنشاء PDF سنوي ←</b>
+        </div>
+    </a>
+
+    <a class="report-card expense-report" target="_blank" href="@CultivationUrl">
+        <span class="report-icon">↘</span>
+        <div>
+            <h2>خسائر التربية السنوية</h2>
+            <p>جميع خسائر التربية الخاصة بـ @SelectedFarmName خلال سنة @year.</p>
+            <b>إنشاء PDF سنوي ←</b>
+        </div>
+    </a>
+
+    <a class="report-card profit-report" target="_blank" href="@ProfitUrl">
+        <span class="report-icon">◆</span>
+        <div>
+            <h2>الربح الحقيقي السنوي</h2>
+            <p>ملخص ربح @SelectedFarmName بعد الزكاة والمصروفات وخسائر التربية لسنة @year.</p>
+            <b>إنشاء PDF سنوي ←</b>
+        </div>
+    </a>
+</div>
+
+<section class="panel quick-periods">
+    <div class="panel-header">
+        <div>
+            <h2>أرشيف السنوات</h2>
+            <p>افتح فواتير كل سنة بصورة مستقلة.</p>
+        </div>
+    </div>
+
+    <div class="period-grid">
+        @foreach (var item in years.Take(6))
+        {
+            <a target="_blank" href="@SalesUrlFor(item)">
+                <b>فواتير سنة @item</b>
+                <span>@SelectedFarmName</span>
+            </a>
+        }
+    </div>
+</section>
+
+@code {
+    private List<LookupItem> farms = [];
+    private List<int> years = [];
+    private long farmId;
+    private int year = DateTime.Today.Year;
+
+    private string SelectedFarmName =>
+        farmId == 0
+            ? "كل المزارع"
+            : farms.FirstOrDefault(x => x.Id == farmId)?.Name ?? "المزرعة المحددة";
+
+    private string SalesUrl => SalesUrlFor(year);
+    private string CultivationUrl => $"/reports/cultivation.pdf?farmId={farmId}&year={year}&v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+    private string ProfitUrl => $"/reports/profit.pdf?farmId={farmId}&year={year}&v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+
+    private string SalesUrlFor(int selectedYear) =>
+        $"/reports/sales.pdf?farmId={farmId}&year={selectedYear}&v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        farms = await Lookups.FarmsForReportsAsync();
+        years = await Lookups.ReportingYearsAsync();
+
+        if (!years.Contains(year))
+            years.Insert(0, year);
+    }
+}

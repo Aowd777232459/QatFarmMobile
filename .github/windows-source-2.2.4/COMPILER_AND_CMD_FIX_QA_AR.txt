@@ -1,0 +1,43 @@
+﻿تقرير إصلاح المترجم وملفات التشغيل
+==================================================
+
+PASS — health explicit IResult
+PASS — invoice explicit IResult
+PASS — customer explicit IResult
+PASS — BUILD_FINAL_INSTALLER.bat ASCII
+PASS — BUILD_FINAL_INSTALLER.bat CRLF
+PASS — BUILD_FINAL_INSTALLER.cmd ASCII
+PASS — BUILD_FINAL_INSTALLER.cmd CRLF
+PASS — BUILD_FINAL_INSTALLER.cmd PowerShell single line
+PASS — Installer/Configure-Database.bat ASCII
+PASS — Installer/Configure-Database.bat CRLF
+PASS — Installer/Configure-Database.cmd ASCII
+PASS — Installer/Configure-Database.cmd CRLF
+PASS — Installer/Configure-Database.cmd PowerShell single line
+PASS — Installer/Install-SqlExpress.bat ASCII
+PASS — Installer/Install-SqlExpress.bat CRLF
+PASS — Installer/Install-SqlExpress.cmd ASCII
+PASS — Installer/Install-SqlExpress.cmd CRLF
+PASS — Installer/Install-SqlExpress.cmd PowerShell single line
+PASS — RESTORE_AND_BUILD.bat ASCII
+PASS — RESTORE_AND_BUILD.bat CRLF
+PASS — RESTORE_AND_BUILD.cmd ASCII
+PASS — RESTORE_AND_BUILD.cmd CRLF
+PASS — RUN_TESTS.bat ASCII
+PASS — RUN_TESTS.bat CRLF
+PASS — RUN_TESTS.cmd ASCII
+PASS — RUN_TESTS.cmd CRLF
+PASS — RUN_TESTS.cmd PowerShell single line
+PASS — START_QATFARM.bat ASCII
+PASS — START_QATFARM.bat CRLF
+PASS — START_QATFARM.cmd ASCII
+PASS — START_QATFARM.cmd CRLF
+PASS — Test-System.ps1 UTF8 BOM
+PASS — Run_First_Time.ps1 UTF8 BOM
+PASS — Installer/Install-SqlExpress.ps1 UTF8 BOM
+PASS — Installer/Build-Installer.ps1 UTF8 BOM
+PASS — Installer/Configure-Database.ps1 UTF8 BOM
+PASS — Inno uses CMD tools
+PASS — Inno no BAT tool links
+
+TOTAL=38 PASS=38 FAIL=0

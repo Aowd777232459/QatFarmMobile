@@ -1,0 +1,127 @@
+@page "/customers"
+@attribute [Authorize]
+@inject CustomerService Service
+
+<PageTitle>العملاء والديون</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">إدارة الذمم</span><h1>العملاء والديون</h1><p>سجل المشترين، حدود الائتمان، الأرصدة، والمدفوعات المتأخرة.</p></div>
+    <button class="btn btn-primary" @onclick="NewCustomer">＋ عميل جديد</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="alert success">@message</div> }
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+
+<div class="customer-kpis">
+    <div><span>عدد العملاء</span><b>@rows.Count</b></div>
+    <div><span>إجمالي المشتريات</span><b>@rows.Sum(x => x.TotalPurchases).ToString("N0") ر.ي</b></div>
+    <div><span>إجمالي الديون</span><b class="red-text">@rows.Sum(x => x.Outstanding).ToString("N0") ر.ي</b></div>
+    <div><span>متجاوزو الحد</span><b>@rows.Count(x => x.CreditLimit > 0 && x.Outstanding > x.CreditLimit)</b></div>
+</div>
+
+<div class="split-layout customer-layout">
+    <section class="panel form-panel">
+        <div class="panel-header"><div><h2>@(model.Id == 0 ? "إضافة عميل" : "تعديل العميل")</h2><p>البيانات المستخدمة في الفواتير وكشوف الحساب.</p></div></div>
+        <EditForm Model="model" OnValidSubmit="Save">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+            <div class="form-grid one">
+                <div class="field"><label>اسم العميل *</label><InputText class="form-control" @bind-Value="model.Name" /></div>
+                <div class="field"><label>رقم الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
+                <div class="field"><label>المنطقة</label><InputText class="form-control" @bind-Value="model.Region" /></div>
+                <div class="field"><label>العنوان</label><InputText class="form-control" @bind-Value="model.Address" /></div>
+                <div class="form-grid cols-2">
+                    <div class="field"><label>الرصيد السابق</label><InputNumber class="form-control" @bind-Value="model.OpeningBalance" /></div>
+                    <div class="field"><label>حد الائتمان</label><InputNumber class="form-control" @bind-Value="model.CreditLimit" /></div>
+                </div>
+                <div class="field"><label>ملاحظات</label><InputTextArea class="form-control textarea" @bind-Value="model.Notes" /></div>
+                <label class="switch-line"><InputCheckbox @bind-Value="model.IsActive" /><span>العميل نشط</span></label>
+            </div>
+            <div class="form-actions"><button class="btn btn-primary" type="submit">حفظ العميل</button><button class="btn btn-ghost" type="button" @onclick="NewCustomer">إلغاء</button></div>
+        </EditForm>
+    </section>
+
+    <section class="panel table-panel">
+        <div class="panel-header">
+            <div><h2>سجل العملاء</h2><p>@rows.Count سجلًا مطابقًا</p></div>
+            <div class="search-box"><span>⌕</span><input @bind="search" @bind:event="oninput" @onkeyup="Load" placeholder="الاسم أو الهاتف أو المنطقة" /></div>
+        </div>
+        <div class="table-responsive"><table class="data-table"><thead><tr><th>العميل</th><th>المنطقة</th><th>المشتريات</th><th>المدفوع</th><th>الدين</th><th>حد الائتمان</th><th>آخر دفعة</th><th></th></tr></thead><tbody>
+        @foreach (var x in rows)
+        {
+            <tr class="@(x.CreditLimit > 0 && x.Outstanding > x.CreditLimit ? "credit-danger-row" : "")">
+                <td><b>@x.Name</b><small class="block">@(x.Phone ?? "بدون هاتف")</small></td>
+                <td>@(x.Region ?? "—")</td>
+                <td class="money">@x.TotalPurchases.ToString("N0")</td>
+                <td class="money positive">@x.TotalPaid.ToString("N0")</td>
+                <td class="money @(x.Outstanding > 0 ? "negative" : "positive")">@x.Outstanding.ToString("N0")</td>
+                <td class="money">@(x.CreditLimit > 0 ? x.CreditLimit.ToString("N0") : "مفتوح")</td>
+                <td>@(x.LastPaymentDate?.ToString("yyyy/MM/dd") ?? "—")</td>
+                <td class="actions wide">
+                    <a title="كشف الحساب" href="@($"/customers/{x.Id}")">◉</a>
+                    <button title="تعديل" @onclick="() => Edit(x.Id)">✎</button>
+                    <AuthorizeView Roles="Administrator"><button class="danger-action" title="إيقاف أو حذف" @onclick="() => Delete(x.Id)">⌫</button></AuthorizeView>
+                </td>
+            </tr>
+        }
+        @if (rows.Count == 0) { <tr><td colspan="8"><div class="empty-inline padded">لا يوجد عملاء مطابقون.</div></td></tr> }
+        </tbody></table></div>
+    </section>
+</div>
+
+@code {
+    private List<CustomerListRow> rows = [];
+    private CustomerEditorModel model = NewModel();
+    private string search = string.Empty;
+    private string? message;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private static CustomerEditorModel NewModel() => new() { IsActive = true };
+    private async Task Load() => rows = await Service.GetAllAsync(search);
+    private void NewCustomer() { model = NewModel(); message = error = null; }
+
+    private async Task Edit(long id)
+    {
+        var details = await Service.GetDetailsAsync(id);
+        if (details is null) return;
+        var x = details.Customer;
+        model = new CustomerEditorModel
+        {
+            Id = x.Id,
+            RowVersion = x.RowVersion,
+            Name = x.Name,
+            Phone = x.Phone,
+            Region = x.Region,
+            Address = x.Address,
+            OpeningBalance = x.OpeningBalance,
+            CreditLimit = x.CreditLimit,
+            Notes = x.Notes,
+            IsActive = x.IsActive
+        };
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            await Service.SaveAsync(model);
+            message = "تم حفظ بيانات العميل بنجاح.";
+            error = null;
+            model = NewModel();
+            await Load();
+        }
+        catch (Exception ex) { error = ex.InnerException?.Message ?? ex.Message; }
+    }
+
+    private async Task Delete(long id)
+    {
+        try
+        {
+            await Service.DeleteAsync(id);
+            message = "تم إيقاف العميل مع الحفاظ على سجله المالي.";
+            error = null;
+            await Load();
+        }
+        catch (Exception ex) { error = ex.InnerException?.Message ?? ex.Message; }
+    }
+}

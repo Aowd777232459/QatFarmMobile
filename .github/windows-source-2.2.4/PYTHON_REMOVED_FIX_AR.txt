@@ -1,0 +1,27 @@
+﻿إصلاح توقف البناء بسبب Python
+================================
+
+سبب المشكلة:
+- كان BUILD_FINAL_INSTALLER يستدعي ملفي فحص مكتوبين بلغة Python.
+- اختصار Microsoft Store المسمى python كان موجودًا، لكن Python الفعلي غير مثبت.
+- لذلك نجح Restore وBuild ثم توقف البناء عند الفحص الإضافي.
+
+ما تم إصلاحه:
+1. إزالة تثبيت واكتشاف Python من Installer/Build-Installer.ps1.
+2. استبدال فحصي Python بملفين PowerShell:
+   Testing/Static-QA.ps1
+   Testing/Product-Readiness-QA.ps1
+3. تعديل Test-System.ps1 ليعمل دون Python.
+4. حذف ملفات Python القديمة من النسخة النهائية.
+5. إزالة فحص bin/obj الخاطئ؛ لأن هذه المجلدات تُنشأ طبيعيًا بعد Build.
+6. تحديث تعليمات المشروع لتوضيح عدم الحاجة إلى Python.
+
+الدليل من سجل جهاز المستخدم:
+- Restore نجح.
+- Build وصل إلى مرحلة الفحص الإضافي؛ إذًا خطأ Users.razor السابق تم تجاوزه.
+- العطل الحالي لم يكن في كود النظام بل في اعتماد أداة الفحص على Python.
+
+طريقة التشغيل:
+- فك النسخة في مسار جديد وقصير.
+- شغّل BUILD_FINAL_INSTALLER.cmd كمسؤول.
+- لا تثبّت Python ولا تفتح Microsoft Store.

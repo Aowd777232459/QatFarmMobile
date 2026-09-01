@@ -1,0 +1,14 @@
+@inject NavigationManager Navigation
+
+<div class="loading-screen">جارٍ توجيهك إلى شاشة الدخول…</div>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+            Navigation.NavigateTo($"/account/login?returnUrl=/{Uri.EscapeDataString(relative)}", forceLoad: true);
+        }
+    }
+}

@@ -1,0 +1,61 @@
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject ZakatService Service
+
+@if (summary.Count > 0)
+{
+    <div class="zakat-alert-bar" role="alert">
+        <div class="zakat-alert-icon">!</div>
+        <div>
+            <b>تنبيه زكاة مستمر: @summary.Count فاتورة غير مؤكدة الدفع</b>
+            <span>الإجمالي المستحق @summary.Amount.ToString("N0") ر.ي — سيبقى هذا التنبيه ظاهرًا حتى اعتماد الدفع.</span>
+        </div>
+        <a href="/zakat">مراجعة واعتماد الزكاة</a>
+    </div>
+}
+
+@code {
+    private ZakatNotificationSummary summary = new(0, 0, null);
+    private readonly PeriodicTimer timer = new(TimeSpan.FromMinutes(1));
+    private CancellationTokenSource? cancellation;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Service.Changed += Refresh;
+        await Refresh();
+        cancellation = new CancellationTokenSource();
+        _ = PollAsync(cancellation.Token);
+    }
+
+    private async Task Refresh()
+    {
+        try
+        {
+            summary = await Service.GetSummaryAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // لا نوقف الواجهة إذا كان الاتصال بقاعدة البيانات مؤقتًا غير متاح.
+        }
+    }
+
+    private async Task PollAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+                await Refresh();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Service.Changed -= Refresh;
+        cancellation?.Cancel();
+        cancellation?.Dispose();
+        timer.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

@@ -1,0 +1,255 @@
+@page "/invoices"
+@attribute [Authorize]
+@inject InvoiceService Service
+@inject LookupService Lookups
+
+<PageTitle>الفواتير السنوية</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">أرشيف المحصول السنوي</span>
+        <h1>الفواتير حسب المزرعة والسنة</h1>
+        <p>عرض وتعديل وطباعة فواتير كل مزرعة، مع فصل كل سنة عن السنوات الأخرى.</p>
+    </div>
+    <a class="btn btn-primary" href="/sales/new">＋ فاتورة جديدة</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert success">@message</div>
+}
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert danger">@error</div>
+}
+
+@if (pendingDeleteId.HasValue)
+{
+    <div class="confirm-strip">
+        <div>
+            <b>تأكيد حذف الفاتورة من النظام</b>
+            <span>الحذف منطقي ويُسجّل في سجل التدقيق. لا يمكن حذف فاتورة مرتبطة بدفعات أو زكاة مدفوعة.</span>
+        </div>
+        <button class="btn btn-small btn-danger" @onclick="ConfirmDelete">نعم، حذف</button>
+        <button class="btn btn-small btn-ghost" @onclick="CancelDelete">إلغاء</button>
+    </div>
+}
+
+<section class="panel table-panel">
+    <div class="panel-header">
+        <div>
+            <h2>فواتير @SelectedFarmName — سنة @year</h2>
+            <p>@rows.Count فاتورة محفوظة في السنة المختارة</p>
+        </div>
+
+        <div class="filters-inline">
+            <select class="form-control compact" @bind="farmId" @bind:after="Load">
+                <option value="0">كل المزارع</option>
+                @foreach (var farm in farms)
+                {
+                    <option value="@farm.Id">@farm.Name</option>
+                }
+            </select>
+
+            <select class="form-control compact" @bind="year" @bind:after="Load">
+                @foreach (var item in years)
+                {
+                    <option value="@item">@item</option>
+                }
+            </select>
+
+            <a class="btn btn-small btn-outline" target="_blank" href="@PdfUrl">PDF تفصيلي سنة @year</a>
+        </div>
+    </div>
+
+    <div class="invoice-totals">
+        <div><span>إجمالي المبيعات</span><b>@Posted.Sum(x => x.GrossAmount).ToString("N0") ر.ي</b></div>
+        <div><span>إجمالي الزكاة</span><b>@Posted.Sum(x => x.ZakatAmount).ToString("N0") ر.ي</b></div>
+        <div><span>إجمالي الصافي</span><b>@Posted.Sum(x => x.NetAmount).ToString("N0") ر.ي</b></div>
+        <div><span>المتبقي</span><b>@Posted.Sum(x => x.AmountDue).ToString("N0") ر.ي</b></div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>رقم الفاتورة</th>
+                    <th>المزرعة</th>
+                    <th>العميل</th>
+                    <th>الإجمالي</th>
+                    <th>الزكاة</th>
+                    <th>المصروفات</th>
+                    <th>الصافي</th>
+                    <th>السداد</th>
+                    <th>التاريخ</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var invoice in rows)
+                {
+                    <tr class="@(invoice.Status == InvoiceStatus.Cancelled ? "cancelled-row" : "")">
+                        <td>
+                            <code>@invoice.InvoiceNumber</code><br />
+                            <span class="status @StatusClass(invoice.Status)">@StatusText(invoice.Status)</span>
+                        </td>
+                        <td><b>@invoice.Farm.Name</b></td>
+                        <td>
+                            @if (invoice.CustomerId.HasValue)
+                            {
+                                <a class="customer-link" href="@($"/customers/{invoice.CustomerId}")">@(invoice.Customer?.Name ?? invoice.BuyerName ?? "—")</a>
+                            }
+                            else
+                            {
+                                <span>@(invoice.BuyerName ?? "بيع مباشر")</span>
+                            }
+                        </td>
+                        <td class="money">@invoice.GrossAmount.ToString("N0")</td>
+                        <td class="money gold-text">
+                            @invoice.ZakatAmount.ToString("N0")
+                            <small class="block">
+                                <span class="status @(invoice.ZakatStatus == ZakatPaymentStatus.Paid ? "paid" : invoice.ZakatStatus == ZakatPaymentStatus.Pending ? "unpaid" : "cancelled")">@ZakatText(invoice.ZakatStatus)</span>
+                            </small>
+                        </td>
+                        <td class="money negative">@invoice.TotalExpenses.ToString("N0")</td>
+                        <td class="money positive">@invoice.NetAmount.ToString("N0")</td>
+                        <td>
+                            <span class="status @PaymentClass(invoice.PaymentStatus)">@PaymentText(invoice.PaymentStatus)</span>
+                            <small class="block">متبقي @invoice.AmountDue.ToString("N0")</small>
+                        </td>
+                        <td>@invoice.InvoiceDate.ToString("yyyy/MM/dd")</td>
+                        <td class="actions invoice-actions">
+                            <a title="طباعة فاتورة @invoice.Farm.Name لسنة @invoice.InvoiceDate.Year" target="_blank" href="@($"/reports/invoice/{invoice.Id}.pdf?v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")">⇩</a>
+                            @if (invoice.Status != InvoiceStatus.Cancelled)
+                            {
+                                <a title="تعديل" href="@($"/sales/edit/{invoice.Id}")">✎</a>
+                            }
+                            <AuthorizeView Roles="Administrator">
+                                @if (invoice.Status != InvoiceStatus.Cancelled)
+                                {
+                                    <button title="إلغاء مع حفظ السجل" @onclick="() => Cancel(invoice.Id)">⊘</button>
+                                }
+                                <button class="danger-action" title="حذف منطقي" @onclick="() => AskDelete(invoice.Id)">⌫</button>
+                            </AuthorizeView>
+                        </td>
+                    </tr>
+                }
+
+                @if (rows.Count == 0)
+                {
+                    <tr>
+                        <td colspan="10">
+                            <div class="empty-inline padded">لا توجد فواتير لـ @SelectedFarmName خلال سنة @year.</div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private List<SalesInvoice> rows = [];
+    private IEnumerable<SalesInvoice> Posted => rows.Where(x => x.Status == InvoiceStatus.Posted);
+    private List<LookupItem> farms = [];
+    private List<int> years = [];
+    private long farmId;
+    private int year = DateTime.Today.Year;
+    private long? pendingDeleteId;
+    private string? message;
+    private string? error;
+
+    private string SelectedFarmName =>
+        farmId == 0
+            ? "كل المزارع"
+            : farms.FirstOrDefault(x => x.Id == farmId)?.Name ?? "المزرعة المحددة";
+
+    private string PdfUrl =>
+        $"/reports/sales.pdf?farmId={farmId}&year={year}&v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        farms = await Lookups.FarmsForReportsAsync();
+        years = await Lookups.ReportingYearsAsync();
+
+        if (!years.Contains(year))
+            years.Insert(0, year);
+
+        await Load();
+    }
+
+    private async Task Load() =>
+        rows = await Service.GetByFarmAndYearAsync(farmId == 0 ? null : farmId, year);
+
+    private async Task Cancel(long id)
+    {
+        try
+        {
+            await Service.CancelAsync(id);
+            message = "تم إلغاء الفاتورة مع الاحتفاظ بها في سجل التدقيق.";
+            error = null;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            error = ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
+    private void AskDelete(long id)
+    {
+        pendingDeleteId = id;
+        message = error = null;
+    }
+
+    private void CancelDelete() => pendingDeleteId = null;
+
+    private async Task ConfirmDelete()
+    {
+        if (!pendingDeleteId.HasValue)
+            return;
+
+        try
+        {
+            await Service.DeleteAsync(pendingDeleteId.Value);
+            pendingDeleteId = null;
+            message = "تم حذف الفاتورة منطقيًا وتسجيل العملية في سجل التدقيق.";
+            error = null;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            error = ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
+    private static string StatusText(InvoiceStatus status) => status switch
+    {
+        InvoiceStatus.Posted => "مرحلة",
+        InvoiceStatus.Cancelled => "ملغاة",
+        _ => "مسودة"
+    };
+
+    private static string StatusClass(InvoiceStatus status) => status == InvoiceStatus.Cancelled ? "cancelled" : "paid";
+
+    private static string PaymentText(PaymentStatus status) => status switch
+    {
+        PaymentStatus.Paid => "مسددة",
+        PaymentStatus.Partial => "جزئي",
+        _ => "غير مسددة"
+    };
+
+    private static string PaymentClass(PaymentStatus status) => status switch
+    {
+        PaymentStatus.Paid => "paid",
+        PaymentStatus.Partial => "partial",
+        _ => "unpaid"
+    };
+
+    private static string ZakatText(ZakatPaymentStatus status) => status switch
+    {
+        ZakatPaymentStatus.Paid => "مدفوعة",
+        ZakatPaymentStatus.Pending => "معلقة",
+        _ => "لا توجد"
+    };
+}

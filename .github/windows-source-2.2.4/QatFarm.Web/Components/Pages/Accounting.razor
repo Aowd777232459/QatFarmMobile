@@ -1,0 +1,388 @@
+@page "/accounting"
+@attribute [Authorize(Roles = "Administrator,Accountant")]
+@inject AccountingService Service
+@inject LookupService Lookups
+
+<PageTitle>المحاسبة والقيود</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">المحاسبة المالية المزدوجة</span>
+        <h1>المحاسبة والقيود اليومية</h1>
+        <p>دليل حسابات، ترحيل آلي للعمليات، قيود عكسية، ميزان مراجعة، وقائمة دخل قابلة للمراجعة.</p>
+    </div>
+    <div class="heading-actions">
+        <button class="btn btn-secondary" disabled="@busy" @onclick="SyncLedger">↻ مزامنة القيود</button>
+        <button class="btn btn-primary" @onclick="ToggleManual">＋ قيد يدوي</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert success">@message</div>
+}
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert danger">@error</div>
+}
+
+@if (summary is null)
+{
+    <div class="loading-card">جاري تحميل البيانات المحاسبية...</div>
+}
+else
+{
+    <div class="accounting-kpis">
+        <div class="accounting-kpi cash"><span>رصيد الصندوق</span><b>@Money(summary.CashBalance)</b><small>الحساب 1101</small></div>
+        <div class="accounting-kpi bank"><span>رصيد البنك والتحويلات</span><b>@Money(summary.BankBalance)</b><small>الحساب 1102</small></div>
+        <div class="accounting-kpi receivable"><span>ذمم العملاء</span><b>@Money(summary.Receivables)</b><small>حسابات مدينة</small></div>
+        <div class="accounting-kpi payable"><span>ذمم الدائنين</span><b>@Money(summary.Payables)</b><small>حسابات دائنة</small></div>
+        <div class="accounting-kpi zakat"><span>زكاة مستحقة</span><b>@Money(summary.ZakatPayable)</b><small>التزام لم يسدد</small></div>
+        <div class="accounting-kpi profit"><span>صافي ربح السنة</span><b>@Money(summary.NetProfitYear)</b><small>إيرادات ناقص المصروفات</small></div>
+    </div>
+
+    @if (summary.UnbalancedAmount != 0)
+    {
+        <div class="accounting-warning">⚠ يوجد فرق في اتزان القيود بقيمة @Money(summary.UnbalancedAmount). راجع القيود اليدوية فورًا.</div>
+    }
+    else
+    {
+        <div class="accounting-balanced">✓ جميع القيود المحاسبية متوازنة — إجمالي المدين يساوي إجمالي الدائن.</div>
+    }
+}
+
+@if (showManual)
+{
+    <section class="panel manual-journal-panel">
+        <div class="panel-header">
+            <div><h2>إنشاء قيد يومية يدوي</h2><p>للقيود الافتتاحية والتسويات فقط. العمليات التشغيلية تُرحّل تلقائيًا من مصادرها.</p></div>
+            <button class="btn btn-ghost btn-small" @onclick="ToggleManual">إغلاق</button>
+        </div>
+
+        <EditForm Model="manual" OnValidSubmit="SaveManual">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+            <div class="form-grid cols-3">
+                <div class="field"><label>تاريخ القيد</label><InputDate class="form-control" @bind-Value="manual.EntryDate" /></div>
+                <div class="field"><label>المزرعة / مركز التكلفة</label>
+                    <InputSelect class="form-control" @bind-Value="manual.FarmId">
+                        <option value="">عام — بدون مزرعة</option>
+                        @foreach (var farm in farms) { <option value="@farm.Id">@farm.Name</option> }
+                    </InputSelect>
+                </div>
+                <div class="field"><label>وصف القيد</label><InputText class="form-control" @bind-Value="manual.Description" /></div>
+            </div>
+
+            <div class="journal-lines-editor">
+                <div class="journal-line journal-line-head"><span>الحساب</span><span>مدين</span><span>دائن</span><span>البيان</span><span></span></div>
+                @for (var i = 0; i < manual.Lines.Count; i++)
+                {
+                    var index = i;
+                    <div class="journal-line">
+                        <InputSelect class="form-control" @bind-Value="manual.Lines[index].AccountId">
+                            <option value="0">اختر الحساب</option>
+                            @foreach (var account in accounts) { <option value="@account.Id">@account.Code — @account.Name</option> }
+                        </InputSelect>
+                        <InputNumber class="form-control numeric" @bind-Value="manual.Lines[index].Debit" />
+                        <InputNumber class="form-control numeric" @bind-Value="manual.Lines[index].Credit" />
+                        <InputText class="form-control" @bind-Value="manual.Lines[index].Description" />
+                        <button type="button" class="journal-remove" title="حذف السطر" @onclick="() => RemoveLine(index)">×</button>
+                    </div>
+                }
+            </div>
+
+            <div class="journal-editor-footer">
+                <button type="button" class="btn btn-outline btn-small" @onclick="AddLine">＋ إضافة سطر</button>
+                <div class="journal-totals"><span>المدين <b>@Money(manual.Lines.Sum(x => x.Debit))</b></span><span>الدائن <b>@Money(manual.Lines.Sum(x => x.Credit))</b></span><span class="@(ManualDifference == 0 ? "balanced" : "unbalanced")">الفرق <b>@Money(ManualDifference)</b></span></div>
+                <button class="btn btn-primary" disabled="@busy">ترحيل القيد</button>
+            </div>
+        </EditForm>
+    </section>
+}
+
+<div class="accounting-grid">
+    <section class="panel income-panel">
+        <div class="panel-header">
+            <div><h2>قائمة الدخل</h2><p>نتيجة النشاط على أساس القيود المرحلة.</p></div>
+            <div class="accounting-filters">
+                <select class="form-control compact" @bind="selectedFarmId" @bind:after="LoadStatements">
+                    <option value="0">كل المزارع</option>
+                    @foreach (var farm in farms) { <option value="@farm.Id">@farm.Name</option> }
+                </select>
+                <select class="form-control compact" @bind="selectedYear" @bind:after="LoadStatements">
+                    @foreach (var y in years) { <option value="@y">@y</option> }
+                </select>
+            </div>
+        </div>
+        @if (income is not null)
+        {
+            <div class="income-statement">
+                <div><span>إيرادات المبيعات</span><b>@Money(income.Revenue)</b></div>
+                <div class="expense"><span>مصروفات وخسائر التربية</span><b>(@Money(income.CultivationExpenses))</b></div>
+                <div class="expense"><span>مصروفات البيع والتشغيل</span><b>(@Money(income.SalesExpenses))</b></div>
+                <div class="expense"><span>مصروف الزكاة</span><b>(@Money(income.ZakatExpense))</b></div>
+                <div class="expense"><span>مصروفات أخرى</span><b>(@Money(income.OtherExpenses))</b></div>
+                <div class="income-total"><span>إجمالي المصروفات</span><b>@Money(income.TotalExpenses)</b></div>
+                <div class="income-net @(income.NetProfit >= 0 ? "positive" : "negative")"><span>صافي الربح / الخسارة</span><b>@Money(income.NetProfit)</b></div>
+            </div>
+        }
+    </section>
+
+    <section class="panel accounting-control-panel">
+        <div class="panel-header"><div><h2>الرقابة المحاسبية</h2><p>فحوص سريعة لصحة الدفاتر.</p></div></div>
+        <div class="accounting-controls-list">
+            <div><span>القيود المسجلة</span><b>@(summary?.PostedEntries ?? 0)</b></div>
+            <div><span>الحسابات المستخدمة</span><b>@trial.Count</b></div>
+            <div><span>إجمالي مدين ميزان المراجعة</span><b>@Money(trial.Sum(x => x.Debit))</b></div>
+            <div><span>إجمالي دائن ميزان المراجعة</span><b>@Money(trial.Sum(x => x.Credit))</b></div>
+            <div class="@(TrialDifference == 0 ? "control-ok" : "control-bad")"><span>فرق الميزان</span><b>@Money(TrialDifference)</b></div>
+        </div>
+    </section>
+</div>
+
+<div class="accounting-grid accounting-statements-grid">
+    <section class="panel financial-position-panel">
+        <div class="panel-header"><div><h2>قائمة المركز المالي</h2><p>الأصول والالتزامات وحقوق الملكية حتى @StatementAsOf.ToString("yyyy/MM/dd").</p></div></div>
+        @if (financialPosition is not null)
+        {
+            <div class="financial-position">
+                <div class="financial-column">
+                    <h3>الأصول</h3>
+                    <div><span>الصندوق</span><b>@Money(financialPosition.Cash)</b></div>
+                    <div><span>البنك والتحويلات</span><b>@Money(financialPosition.Bank)</b></div>
+                    <div><span>ذمم العملاء</span><b>@Money(financialPosition.Receivables)</b></div>
+                    <div><span>أصول أخرى</span><b>@Money(financialPosition.OtherAssets)</b></div>
+                    <div class="statement-total"><span>إجمالي الأصول</span><b>@Money(financialPosition.TotalAssets)</b></div>
+                </div>
+                <div class="financial-column">
+                    <h3>الالتزامات وحقوق الملكية</h3>
+                    <div><span>ذمم الدائنين</span><b>@Money(financialPosition.Payables)</b></div>
+                    <div><span>الزكاة المستحقة</span><b>@Money(financialPosition.ZakatPayable)</b></div>
+                    <div><span>التزامات أخرى</span><b>@Money(financialPosition.OtherLiabilities)</b></div>
+                    <div><span>حقوق الملكية/الافتتاحي</span><b>@Money(financialPosition.OpeningEquity)</b></div>
+                    <div><span>نتيجة النشاط المتراكمة</span><b>@Money(financialPosition.AccumulatedResult)</b></div>
+                    <div class="statement-total"><span>الالتزامات + حقوق الملكية</span><b>@Money(financialPosition.LiabilitiesAndEquity)</b></div>
+                </div>
+            </div>
+            <div class="position-check @(Math.Abs(financialPosition.Difference) < 0.01m ? "control-ok" : "control-bad")">
+                <span>فرق معادلة المركز المالي</span><b>@Money(Math.Abs(financialPosition.Difference))</b>
+            </div>
+        }
+    </section>
+
+    <section class="panel ledger-summary-panel">
+        <div class="panel-header"><div><h2>الأستاذ العام</h2><p>حركة حساب محدد مع الرصيد المتراكم.</p></div></div>
+        <div class="field">
+            <label>اختر الحساب</label>
+            <select class="form-control" @bind="selectedAccountId" @bind:after="LoadLedger">
+                @foreach (var account in accounts) { <option value="@account.Id">@account.Code — @account.Name</option> }
+            </select>
+        </div>
+        <div class="ledger-summary">
+            <span>عدد الحركات <b>@ledger.Count</b></span>
+            <span>إجمالي المدين <b>@Money(ledger.Sum(x => x.Debit))</b></span>
+            <span>إجمالي الدائن <b>@Money(ledger.Sum(x => x.Credit))</b></span>
+            <span>الرصيد الختامي <b>@LedgerClosingLabel</b></span>
+        </div>
+    </section>
+</div>
+
+<section class="panel general-ledger-panel">
+    <div class="panel-header"><div><h2>تفاصيل دفتر الأستاذ</h2><p>@SelectedAccountLabel — سنة @selectedYear — @SelectedFarmLabel</p></div></div>
+    <div class="table-wrap">
+        <table class="data-table accounting-table">
+            <thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>المصدر</th><th>المزرعة</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
+            <tbody>
+                @foreach (var row in ledger)
+                {
+                    <tr>
+                        <td>@row.EntryDate.ToString("yyyy/MM/dd")</td><td><code>@row.EntryNumber</code></td><td>@row.Description</td><td>@SourceName(row.SourceType)</td><td>@row.FarmName</td>
+                        <td class="money-cell">@Money(row.Debit)</td><td class="money-cell">@Money(row.Credit)</td>
+                        <td class="money-cell">@Money(Math.Abs(row.RunningBalance)) @(row.RunningBalance < 0 ? "دائن" : row.RunningBalance > 0 ? "مدين" : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel trial-balance-panel">
+    <div class="panel-header"><div><h2>ميزان المراجعة</h2><p>أرصدة جميع الحسابات حتى اليوم.</p></div><b class="accounting-badge">Double Entry</b></div>
+    <div class="table-wrap">
+        <table class="data-table accounting-table">
+            <thead><tr><th>الكود</th><th>الحساب</th><th>التصنيف</th><th>إجمالي مدين</th><th>إجمالي دائن</th><th>الرصيد</th></tr></thead>
+            <tbody>
+                @foreach (var row in trial)
+                {
+                    <tr>
+                        <td><code>@row.Code</code></td>
+                        <td><b>@row.AccountName</b></td>
+                        <td>@CategoryName(row.Category)</td>
+                        <td class="money-cell">@Money(row.Debit)</td>
+                        <td class="money-cell">@Money(row.Credit)</td>
+                        <td class="money-cell @(row.Balance < 0 ? "credit-balance" : "")">@Money(Math.Abs(row.Balance)) @(row.Balance < 0 ? "دائن" : row.Balance > 0 ? "مدين" : "")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot><tr><th colspan="3">الإجمالي</th><th>@Money(trial.Sum(x => x.Debit))</th><th>@Money(trial.Sum(x => x.Credit))</th><th>@Money(TrialDifference)</th></tr></tfoot>
+        </table>
+    </div>
+</section>
+
+<section class="panel journal-register-panel">
+    <div class="panel-header"><div><h2>دفتر اليومية</h2><p>أحدث القيود مع مصدر كل قيد وحالته.</p></div></div>
+    <div class="table-wrap">
+        <table class="data-table accounting-table">
+            <thead><tr><th>رقم القيد</th><th>التاريخ</th><th>البيان</th><th>المصدر</th><th>المزرعة</th><th>مدين</th><th>دائن</th><th>الحالة</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var row in entries)
+                {
+                    <tr class="@(row.Status == JournalEntryStatus.Reversed ? "reversed-journal" : "")">
+                        <td><code>@row.EntryNumber</code></td><td>@row.EntryDate.ToString("yyyy/MM/dd")</td><td>@row.Description</td>
+                        <td><span class="source-chip">@(row.IsAutomatic ? "آلي" : "يدوي") — @SourceName(row.SourceType)</span></td><td>@row.FarmName</td>
+                        <td class="money-cell">@Money(row.Debit)</td><td class="money-cell">@Money(row.Credit)</td>
+                        <td><span class="status @(row.Status == JournalEntryStatus.Posted ? "paid" : "cancelled")">@(row.Status == JournalEntryStatus.Posted ? "مرحّل" : "معكوس")</span></td>
+                        <td>
+                            @if (!row.IsAutomatic && row.Status == JournalEntryStatus.Posted && !row.SourceType.EndsWith(":REV", StringComparison.Ordinal))
+                            {
+                                <AuthorizeView Roles="Administrator"><button class="danger-action" title="عكس القيد" @onclick="() => ReverseManual(row.Id)">↶</button></AuthorizeView>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private AccountingSummary? summary;
+    private IncomeStatementModel? income;
+    private FinancialPositionModel? financialPosition;
+    private List<GeneralLedgerRow> ledger = [];
+    private List<TrialBalanceRow> trial = [];
+    private List<JournalEntryRow> entries = [];
+    private List<ChartOfAccount> accounts = [];
+    private List<LookupItem> farms = [];
+    private List<int> years = [];
+    private ManualJournalEditorModel manual = NewManual();
+    private bool showManual;
+    private bool busy;
+    private string? message;
+    private string? error;
+    private int selectedYear = DateTime.Today.Year;
+    private long selectedFarmId;
+    private long selectedAccountId;
+
+    private DateTime StatementAsOf => selectedYear == DateTime.Today.Year ? DateTime.Today : new DateTime(selectedYear, 12, 31);
+    private string SelectedAccountLabel => accounts.FirstOrDefault(x => x.Id == selectedAccountId) is { } account ? $"{account.Code} — {account.Name}" : "الحساب المحدد";
+    private string SelectedFarmLabel => selectedFarmId == 0 ? "كل المزارع" : farms.FirstOrDefault(x => x.Id == selectedFarmId)?.Name ?? "المزرعة المحددة";
+    private string LedgerClosingLabel => ledger.Count == 0 ? Money(0) : $"{Money(Math.Abs(ledger[^1].RunningBalance))} {(ledger[^1].RunningBalance < 0 ? "دائن" : ledger[^1].RunningBalance > 0 ? "مدين" : "")}";
+    private decimal ManualDifference => Math.Abs(manual.Lines.Sum(x => x.Debit) - manual.Lines.Sum(x => x.Credit));
+    private decimal TrialDifference => Math.Abs(trial.Sum(x => x.Debit) - trial.Sum(x => x.Credit));
+
+    protected override async Task OnInitializedAsync()
+    {
+        accounts = await Service.GetPostingAccountsAsync();
+        selectedAccountId = accounts.FirstOrDefault(x => x.Code == AccountingService.CashCode)?.Id ?? accounts.FirstOrDefault()?.Id ?? 0;
+        farms = await Lookups.FarmsForReportsAsync();
+        years = await Lookups.ReportingYearsAsync();
+        if (!years.Contains(DateTime.Today.Year)) years.Insert(0, DateTime.Today.Year);
+        try { await Service.SyncOperationalLedgerAsync(); }
+        catch (Exception ex) { error = $"تعذرت المزامنة التلقائية للقيود: {ex.Message}"; }
+        await LoadAll();
+    }
+
+    private async Task LoadAll()
+    {
+        summary = await Service.GetSummaryAsync();
+        trial = await Service.GetTrialBalanceAsync();
+        entries = await Service.GetRecentEntriesAsync(120);
+        await LoadStatements();
+    }
+
+    private async Task LoadStatements()
+    {
+        long? farmId = selectedFarmId == 0 ? null : selectedFarmId;
+        income = await Service.GetIncomeStatementAsync(selectedYear, farmId);
+        financialPosition = await Service.GetFinancialPositionAsync(StatementAsOf, farmId);
+        await LoadLedger();
+    }
+
+    private async Task LoadLedger()
+    {
+        long? farmId = selectedFarmId == 0 ? null : selectedFarmId;
+        var from = new DateTime(selectedYear, 1, 1);
+        var to = new DateTime(selectedYear, 12, 31);
+        ledger = await Service.GetGeneralLedgerAsync(selectedAccountId, from, to, farmId);
+    }
+
+    private async Task SyncLedger()
+    {
+        busy = true; message = null; error = null;
+        try
+        {
+            var changed = await Service.SyncOperationalLedgerAsync();
+            message = changed == 0 ? "دفتر اليومية متزامن بالفعل مع جميع العمليات." : $"تمت المزامنة المحاسبية بنجاح. تم ترحيل/عكس {changed} عملية.";
+            await LoadAll();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task SaveManual()
+    {
+        busy = true; message = null; error = null;
+        try
+        {
+            var id = await Service.CreateManualEntryAsync(manual);
+            message = $"تم ترحيل القيد اليدوي رقم {id} بنجاح.";
+            manual = NewManual(); showManual = false;
+            await LoadAll();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task ReverseManual(long id)
+    {
+        busy = true; message = null; error = null;
+        try
+        {
+            await Service.ReverseManualEntryAsync(id, "عكس من شاشة المحاسبة");
+            message = "تم إنشاء القيد العكسي مع الحفاظ على القيد الأصلي في سجل المراجعة.";
+            await LoadAll();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void ToggleManual() => showManual = !showManual;
+    private void AddLine() => manual.Lines.Add(new ManualJournalLineModel());
+    private void RemoveLine(int index) { if (manual.Lines.Count > 2) manual.Lines.RemoveAt(index); }
+    private static ManualJournalEditorModel NewManual() => new() { EntryDate = DateTime.Now };
+    private static string Money(decimal value) => $"{value:N0} ر.ي";
+
+    private static string CategoryName(AccountCategory category) => category switch
+    {
+        AccountCategory.Asset => "أصول",
+        AccountCategory.Liability => "التزامات",
+        AccountCategory.Equity => "حقوق ملكية",
+        AccountCategory.Revenue => "إيرادات",
+        AccountCategory.Expense => "مصروفات",
+        _ => "—"
+    };
+
+    private static string SourceName(string source) => source switch
+    {
+        "SalesInvoice" => "فاتورة بيع",
+        "CustomerPayment" => "سند قبض عميل",
+        "CustomerOpeningBalance" => "رصيد افتتاحي",
+        "CultivationExpense" => "خسارة تربية",
+        "CultivationDebtPayment" => "سداد دائن",
+        "ZakatPayment" => "سداد زكاة",
+        "Manual" => "قيد يدوي",
+        _ when source.EndsWith(":REV") => "قيد عكسي",
+        _ => source
+    };
+}

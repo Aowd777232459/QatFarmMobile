@@ -1,0 +1,19 @@
+<nav class="nav-menu">
+    <div class="nav-caption">القائمة الرئيسية</div>
+    <NavLink class="nav-item" href="" Match="NavLinkMatch.All"><span>⌂</span> لوحة التحكم</NavLink>
+    <NavLink class="nav-item" href="farms"><span>♧</span> إدارة المزارع</NavLink>
+    <NavLink class="nav-item" href="customers"><span>♙</span> العملاء والديون</NavLink>
+    <NavLink class="nav-item" href="cultivation-expenses"><span>↘</span> خسائر التربية</NavLink>
+    <NavLink class="nav-item accent" href="sales/new"><span>＋</span> فاتورة بيع جديدة</NavLink>
+    <NavLink class="nav-item" href="invoices"><span>▧</span> الفواتير والمبيعات</NavLink>
+    <NavLink class="nav-item" href="zakat"><span>◉</span> الزكاة المستحقة</NavLink>
+    <NavLink class="nav-item" href="reports"><span>▥</span> التقارير والتحليلات</NavLink>
+    <AuthorizeView Roles="Administrator,Accountant">
+        <NavLink class="nav-item" href="accounting"><span>◫</span> المحاسبة والقيود</NavLink>
+    </AuthorizeView>
+    <AuthorizeView Roles="Administrator">
+        <NavLink class="nav-item" href="users"><span>♟</span> المستخدمون والصلاحيات</NavLink>
+        <NavLink class="nav-item" href="audit-logs"><span>◎</span> سجل التدقيق</NavLink>
+        <NavLink class="nav-item" href="settings"><span>⚙</span> الإعدادات والصيانة</NavLink>
+    </AuthorizeView>
+</nav>

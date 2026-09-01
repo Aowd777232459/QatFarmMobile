@@ -1,0 +1,24 @@
+{
+  "name": "نظام زراعي عواد سوفت",
+  "short_name": "AWAD SOFT",
+  "description": "إدارة المزارع والمبيعات والمصروفات والديون والمحاسبة من الجوال.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#071b13",
+  "theme_color": "#0b2d1e",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ],
+  "shortcuts": [
+    {"name":"فاتورة بيع جديدة","short_name":"فاتورة","url":"/sales/new","icons":[{"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"خسائر التربية","short_name":"المصروفات","url":"/cultivation-expenses","icons":[{"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"لوحة التحكم","short_name":"الرئيسية","url":"/","icons":[{"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png"}]}
+  ]
+}

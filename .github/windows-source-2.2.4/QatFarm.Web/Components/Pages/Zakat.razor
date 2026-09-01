@@ -1,0 +1,76 @@
+@page "/zakat"
+@attribute [Authorize]
+@inject ZakatService Service
+
+<PageTitle>الزكاة المستحقة</PageTitle>
+<div class="page-heading">
+    <div><span class="eyebrow">التزامات لا تُغلق تلقائيًا</span><h1>إشعارات الزكاة المستحقة</h1><p>تبقى الفاتورة في حالة تنبيه حتى يؤكد المدير أو المحاسب دفع الزكاة.</p></div>
+    <a class="btn btn-outline" href="/reports">التقارير</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="alert success">@message</div> }
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+
+<div class="zakat-hero panel">
+    <div class="zakat-hero-icon">%</div>
+    <div><span>إجمالي الزكاة غير المؤكدة</span><strong>@rows.Sum(x => x.ZakatAmount).ToString("N0") ر.ي</strong><small>@rows.Count فاتورة تحتاج اعتماد دفع</small></div>
+    <div class="zakat-rule">لا يختفي التنبيه بمجرد فتح الصفحة؛ يختفي فقط بعد الضغط على «تأكيد الدفع» وحفظ العملية.</div>
+</div>
+
+@if (selectedInvoiceId.HasValue)
+{
+    <section class="panel zakat-confirm-panel">
+        <div><h2>تأكيد دفع الزكاة</h2><p>الفاتورة: @(rows.FirstOrDefault(x => x.InvoiceId == selectedInvoiceId)?.InvoiceNumber)</p></div>
+        <div class="field"><label>رقم سند أو مرجع الدفع</label><InputText class="form-control" @bind-Value="paymentReference" placeholder="اختياري" /></div>
+        <button class="btn btn-primary" @onclick="Confirm">تأكيد الدفع نهائيًا</button>
+        <button class="btn btn-ghost" @onclick="CancelConfirm">إلغاء</button>
+    </section>
+}
+
+<section class="panel table-panel">
+    <div class="panel-header"><div><h2>الفواتير المعلقة</h2><p>مرتبة من الأقدم إلى الأحدث</p></div></div>
+    <div class="table-responsive"><table class="data-table"><thead><tr><th>الفاتورة</th><th>المزرعة</th><th>العميل</th><th>تاريخ البيع</th><th>عمر التنبيه</th><th>إجمالي البيع</th><th>الزكاة</th><th></th></tr></thead><tbody>
+    @foreach (var x in rows)
+    {
+        <tr class="@(x.AgeDays >= 7 ? "zakat-overdue-row" : "")">
+            <td><code>@x.InvoiceNumber</code></td>
+            <td><b>@x.FarmName</b></td>
+            <td>@x.CustomerName</td>
+            <td>@x.InvoiceDate.ToString("yyyy/MM/dd")</td>
+            <td><span class="status @(x.AgeDays >= 7 ? "unpaid" : "partial")">@x.AgeDays يوم</span></td>
+            <td class="money">@x.GrossAmount.ToString("N0")</td>
+            <td class="money gold-text">@x.ZakatAmount.ToString("N0")</td>
+            <td><AuthorizeView Roles="Administrator,Accountant"><button class="btn btn-small btn-primary" @onclick="() => StartConfirm(x.InvoiceId)">تأكيد الدفع</button></AuthorizeView></td>
+        </tr>
+    }
+    @if (rows.Count == 0) { <tr><td colspan="8"><div class="empty-inline padded"><b>جميع الزكوات مؤكدة الدفع.</b><br/>لا توجد إشعارات معلقة حاليًا.</div></td></tr> }
+    </tbody></table></div>
+</section>
+
+@code {
+    private List<ZakatPendingRow> rows = [];
+    private long? selectedInvoiceId;
+    private string? paymentReference;
+    private string? message;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load() => rows = await Service.GetPendingAsync();
+    private void StartConfirm(long id) { selectedInvoiceId = id; paymentReference = null; message = error = null; }
+    private void CancelConfirm() { selectedInvoiceId = null; paymentReference = null; }
+
+    private async Task Confirm()
+    {
+        if (!selectedInvoiceId.HasValue) return;
+        try
+        {
+            await Service.ConfirmPaidAsync(selectedInvoiceId.Value, paymentReference);
+            message = "تم اعتماد دفع الزكاة، وأُزيل تنبيه الفاتورة.";
+            error = null;
+            selectedInvoiceId = null;
+            paymentReference = null;
+            await Load();
+        }
+        catch (Exception ex) { error = ex.InnerException?.Message ?? ex.Message; }
+    }
+}

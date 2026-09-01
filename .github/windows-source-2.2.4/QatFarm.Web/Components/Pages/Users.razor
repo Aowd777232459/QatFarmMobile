@@ -1,0 +1,193 @@
+@page "/users"
+@attribute [Authorize(Roles = "Administrator")]
+@inject UserManagementService Service
+
+<PageTitle>المستخدمون والصلاحيات</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">المدير فقط</span>
+        <h1>المستخدمون والصلاحيات</h1>
+        <p>إنشاء حسابات الموظفين والمحاسبين، إيقاف الحسابات، وتغيير الصلاحيات بأمان.</p>
+    </div>
+    <button class="btn btn-primary" type="button" @onclick="() => Reset()">＋ مستخدم جديد</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert success">@message</div>
+}
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert danger">@error</div>
+}
+
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>@(model.Id is null ? "إضافة مستخدم" : "تعديل المستخدم")</h2>
+            <p>عند إنشاء الحساب أو إدخال كلمة مرور جديدة سيُجبر المستخدم على تغييرها عند أول دخول.</p>
+        </div>
+    </div>
+
+    <EditForm Model="model" OnValidSubmit="Save">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="validation-summary" />
+        <div class="form-grid cols-5">
+            <div class="field">
+                <label>الاسم الكامل *</label>
+                <InputText class="form-control" @bind-Value="model.FullName" />
+            </div>
+            <div class="field">
+                <label>البريد الإلكتروني *</label>
+                <InputText class="form-control" @bind-Value="model.Email" />
+            </div>
+            <div class="field">
+                <label>الصلاحية *</label>
+                <InputSelect class="form-control" @bind-Value="model.Role">
+                    <option value="Administrator">مدير النظام</option>
+                    <option value="Accountant">محاسب</option>
+                    <option value="Employee">موظف</option>
+                </InputSelect>
+            </div>
+            <div class="field">
+                <label>@(model.Id is null ? "كلمة المرور المؤقتة *" : "كلمة مرور جديدة (اختياري)")</label>
+                <InputText class="form-control" type="password" autocomplete="new-password" @bind-Value="model.NewPassword" />
+                <small>10 أحرف على الأقل: كبير وصغير ورقم ورمز.</small>
+            </div>
+            <div class="field">
+                <label>حالة الحساب</label>
+                <div class="checkbox-line"><InputCheckbox @bind-Value="model.IsActive" /> حساب نشط</div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" type="submit" disabled="@saving">@(saving ? "جارٍ الحفظ…" : "حفظ المستخدم")</button>
+            <button class="btn btn-ghost" type="button" @onclick="() => Reset()">إلغاء</button>
+        </div>
+    </EditForm>
+</section>
+
+<section class="panel table-panel">
+    <div class="panel-header">
+        <div>
+            <h2>حسابات النظام</h2>
+            <p>@users.Count حساب — يمنع النظام تعطيل آخر مدير نشط.</p>
+        </div>
+        <button class="btn btn-outline" type="button" @onclick="Load">تحديث</button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>الاسم</th><th>البريد</th><th>الصلاحية</th><th>الحالة</th>
+                    <th>تغيير كلمة المرور</th><th>آخر دخول</th><th>تاريخ الإنشاء</th><th>العملية</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in users)
+                {
+                    <tr>
+                        <td><b>@user.FullName</b></td>
+                        <td><code>@user.Email</code></td>
+                        <td><span class="status @RoleClass(user.Role)">@RoleText(user.Role)</span></td>
+                        <td><span class="status @(user.IsActive ? "paid" : "cancelled")">@(user.IsActive ? "نشط" : "موقوف")</span></td>
+                        <td>@(user.MustChangePassword ? "مطلوب" : "مكتملة")</td>
+                        <td>@(user.LastLoginAt?.ToLocalTime().ToString("yyyy/MM/dd HH:mm") ?? "لم يدخل")</td>
+                        <td>@user.CreatedAt.ToLocalTime().ToString("yyyy/MM/dd")</td>
+                        <td class="actions"><button title="تعديل" @onclick="() => Edit(user)">✎</button></td>
+                    </tr>
+                }
+                @if (users.Count == 0)
+                {
+                    <tr><td colspan="8"><div class="empty-inline">لا توجد حسابات.</div></td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private UserEditorModel model = NewModel();
+    private List<UserListRow> users = [];
+    private bool saving;
+    private string? message;
+    private string? error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        try
+        {
+            users = await Service.GetAsync();
+            error = null;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        message = error = null;
+        try
+        {
+            var isNew = model.Id is null;
+            await Service.SaveAsync(model);
+            message = isNew ? "تم إنشاء المستخدم وإسناد الصلاحية." : "تم تحديث المستخدم وصلاحياته.";
+            Reset(clearMessages: false);
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void Edit(UserListRow user)
+    {
+        model = new UserEditorModel
+        {
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            Role = user.Role,
+            IsActive = user.IsActive,
+            ConcurrencyStamp = user.ConcurrencyStamp
+        };
+        message = error = null;
+    }
+
+    private void Reset(bool clearMessages = true)
+    {
+        model = NewModel();
+        if (clearMessages) message = error = null;
+    }
+
+    private static UserEditorModel NewModel() => new()
+    {
+        Role = "Employee",
+        IsActive = true
+    };
+
+    private static string RoleText(string role) => role switch
+    {
+        "Administrator" => "مدير",
+        "Accountant" => "محاسب",
+        _ => "موظف"
+    };
+
+    private static string RoleClass(string role) => role switch
+    {
+        "Administrator" => "paid",
+        "Accountant" => "partial",
+        _ => "unpaid"
+    };
+}
