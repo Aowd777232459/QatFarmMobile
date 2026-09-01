@@ -8,35 +8,40 @@
 }
 else
 {
- <h1>إدارة المستخدمين</h1>
- <div class="panel">
+ <div class="page-head"><div><h1>المستخدمون والصلاحيات</h1><span class="erp-subtitle">الحسابات الداخلية</span></div><button class="btn primary" @onclick="Reset">＋ مستخدم</button></div>
+ <div class="summary-strip"><span>المستخدمون <b>@users.Count</b></span><span>النشطون <b>@users.Count(x=>x.IsActive)</b></span><span>المديرون <b>@users.Count(x=>x.Role==UserRole.Administrator)</b></span></div>
+
+ <div class="panel erp-entry-panel">
+  <div class="erp-box-title">@(model.Id==0?"بيانات مستخدم جديد":"تعديل المستخدم")</div>
   <EditForm Model="model" OnValidSubmit="SaveAsync">
    <div class="form-grid">
     <div><label>الاسم</label><InputText class="form-control" @bind-Value="model.FullName" /></div>
-    <div><label>رمز الدخول من 6 أحرف @(model.Id>0?"(اتركه فارغاً دون تغيير)":"")</label><InputText class="form-control" maxlength="6" @bind-Value="model.AccessCode" /></div>
-    <div><label>الدور</label><InputSelect class="form-control" @bind-Value="model.Role">
-     <option value="@UserRole.Administrator">مدير</option><option value="@UserRole.Accountant">محاسب</option><option value="@UserRole.Employee">موظف</option>
-    </InputSelect></div>
+    <div><label>رمز الدخول 6 أحرف</label><InputText class="form-control" maxlength="6" @bind-Value="model.AccessCode" placeholder="@(model.Id>0?"اتركه فارغًا دون تغيير":"")" /></div>
+    <div><label>الدور</label><InputSelect class="form-control" @bind-Value="model.Role"><option value="@UserRole.Administrator">مدير</option><option value="@UserRole.Accountant">محاسب</option><option value="@UserRole.Employee">موظف</option></InputSelect></div>
    </div>
-   <div class="permission-grid">
+   <div class="permission-grid erp-permission-grid">
     <label class="check"><InputCheckbox @bind-Value="model.CanEditInvoices" /> تعديل الفواتير</label>
     <label class="check"><InputCheckbox @bind-Value="model.CanDeleteInvoices" /> حذف الفواتير</label>
     <label class="check"><InputCheckbox @bind-Value="model.IsActive" /> الحساب نشط</label>
    </div>
-   <div class="actions"><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="Reset">جديد</button></div>
+   <div class="actions"><button class="btn primary">💾 حفظ</button><button type="button" class="btn ghost" @onclick="Reset">مسح</button></div>
   </EditForm>
   @if(!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
  </div>
- <div class="card-list">
+
+ <div class="erp-register-head"><strong>سجل المستخدمين</strong><span>@users.Count سجل</span></div>
+ <div class="card-list user-register">
  @foreach(var x in users)
  {
-  <div class="data-card">
-   <div class="grow"><strong>@x.FullName</strong><small>@RoleText(x.Role) — @(x.IsActive?"نشط":"موقوف")</small><div class="user-permissions"><span>تعديل: @(x.Role==UserRole.Administrator || x.CanEditInvoices?"نعم":"لا")</span><span>حذف: @(x.Role==UserRole.Administrator || x.CanDeleteInvoices?"نعم":"لا")</span></div></div>
+  <article class="data-card user-row">
+   <div class="record-icon">@Initial(x.FullName)</div>
+   <div class="grow"><strong>@x.FullName</strong><small>@RoleText(x.Role) · @(x.IsActive?"نشط":"موقوف")</small><div class="user-permissions"><span>تعديل: @(x.Role==UserRole.Administrator || x.CanEditInvoices?"نعم":"لا")</span><span>حذف: @(x.Role==UserRole.Administrator || x.CanDeleteInvoices?"نعم":"لا")</span></div></div>
    <button class="btn small" @onclick="() => Edit(x)">تعديل</button>
-  </div>
+  </article>
  }
  </div>
 }
+
 @code {
  private List<AppUser> users=[]; private UserEditModel model=new(){IsActive=true}; private string? message; private bool ok;
  protected override async Task OnInitializedAsync(){if(Session.IsAdmin)await LoadAsync();}
@@ -45,4 +50,5 @@ else
  private void Edit(AppUser x)=>model=new UserEditModel{Id=x.Id,FullName=x.FullName,Role=x.Role,CanEditInvoices=x.CanEditInvoices,CanDeleteInvoices=x.CanDeleteInvoices,IsActive=x.IsActive};
  private void Reset()=>model=new UserEditModel{IsActive=true};
  private static string RoleText(UserRole r)=>r switch{UserRole.Administrator=>"مدير",UserRole.Accountant=>"محاسب",_=>"موظف"};
+ private static string Initial(string? name)=>string.IsNullOrWhiteSpace(name)?"م":name.Trim()[0].ToString();
 }
