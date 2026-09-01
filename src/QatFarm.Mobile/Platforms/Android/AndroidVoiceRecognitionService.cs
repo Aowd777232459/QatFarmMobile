@@ -11,7 +11,7 @@ public sealed class AndroidVoiceRecognitionService : IVoiceRecognitionService
     {
         get
         {
-            try { return SpeechRecognizer.IsRecognitionAvailable(Application.Context); }
+            try { return SpeechRecognizer.IsRecognitionAvailable(Android.App.Application.Context); }
             catch { return false; }
         }
     }
