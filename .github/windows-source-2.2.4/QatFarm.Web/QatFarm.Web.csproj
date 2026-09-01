@@ -6,12 +6,12 @@
     <RootNamespace>QatFarm.Web</RootNamespace>
     <AssemblyName>QatFarm.Web</AssemblyName>
     <LangVersion>latest</LangVersion>
-    <Version>2.2.3</Version>
-    <AssemblyVersion>2.2.3.0</AssemblyVersion>
-    <FileVersion>2.2.3.0</FileVersion>
+    <Version>2.2.4</Version>
+    <AssemblyVersion>2.2.4.0</AssemblyVersion>
+    <FileVersion>2.2.4.0</FileVersion>
     <Company>AWAD SOFT</Company>
     <Product>نظام زراعي عواد سوفت</Product>
-    <Description>إدارة المزارع والمبيعات والعملاء والزكاة والديون مع محاسبة مزدوجة وقيود يومية وميزان مراجعة وقائمة دخل.</Description>
+    <Description>إدارة المزارع والمبيعات والعملاء والزكاة والديون مع محاسبة مزدوجة وقيود يومية وميزان مراجعة وقائمة دخل ومعاون صوتي عربي.</Description>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <TieredPGO>true</TieredPGO>
     <InvariantGlobalization>false</InvariantGlobalization>
