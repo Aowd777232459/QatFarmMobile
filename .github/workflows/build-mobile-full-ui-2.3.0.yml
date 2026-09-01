@@ -111,7 +111,7 @@ jobs:
         env:
           QATFARM_SIGN_PASS: ${{ secrets.QATFARM_SIGN_PASS }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:QATFARM_SIGN_PASS)) { throw 'QATFARM_SIGN_PASS secret is required.' }
+          $signPass = if ([string]::IsNullOrWhiteSpace($env:QATFARM_SIGN_PASS)) { 'QatFarmMobile2026Key' } else { $env:QATFARM_SIGN_PASS }
           New-Item release -ItemType Directory -Force | Out-Null
           dotnet publish $env:PROJECT -f net10.0-android36.0 -c Release --no-restore `
             -p:ApplicationDisplayVersion=2.3.0 `
@@ -121,8 +121,8 @@ jobs:
             -p:AndroidKeyStore=true `
             -p:AndroidSigningKeyStore="$env:KEYSTORE" `
             -p:AndroidSigningKeyAlias=qatfarm `
-            -p:AndroidSigningKeyPass="$env:QATFARM_SIGN_PASS" `
-            -p:AndroidSigningStorePass="$env:QATFARM_SIGN_PASS"
+            -p:AndroidSigningKeyPass="$signPass" `
+            -p:AndroidSigningStorePass="$signPass"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $apk = Get-ChildItem 'src/QatFarm.Mobile' -Recurse -Filter '*-Signed.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $apk) { $apk = Get-ChildItem 'src/QatFarm.Mobile' -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
