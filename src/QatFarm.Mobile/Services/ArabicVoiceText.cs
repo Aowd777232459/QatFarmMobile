@@ -9,25 +9,25 @@ public static class ArabicVoiceText
     private static readonly Dictionary<string, decimal> NumberWords = new(StringComparer.OrdinalIgnoreCase)
     {
         ["صفر"] = 0,
-        ["واحد"] = 1, ["واحده"] = 1, ["واحدة"] = 1,
+        ["واحد"] = 1, ["واحده"] = 1,
         ["اثنين"] = 2, ["اثنان"] = 2, ["اثنتين"] = 2, ["ثنتين"] = 2, ["ثنين"] = 2,
-        ["ثلاث"] = 3, ["ثلاثه"] = 3, ["ثلاثة"] = 3,
-        ["اربع"] = 4, ["اربعه"] = 4, ["اربعة"] = 4,
-        ["خمس"] = 5, ["خمسه"] = 5, ["خمسة"] = 5,
-        ["ست"] = 6, ["سته"] = 6, ["ستة"] = 6,
-        ["سبع"] = 7, ["سبعه"] = 7, ["سبعة"] = 7,
-        ["ثمان"] = 8, ["ثمانيه"] = 8, ["ثمانية"] = 8,
-        ["تسع"] = 9, ["تسعه"] = 9, ["تسعة"] = 9,
-        ["عشر"] = 10, ["عشره"] = 10, ["عشرة"] = 10,
+        ["ثلاث"] = 3, ["ثلاثه"] = 3,
+        ["اربع"] = 4, ["اربعه"] = 4,
+        ["خمس"] = 5, ["خمسه"] = 5,
+        ["ست"] = 6, ["سته"] = 6,
+        ["سبع"] = 7, ["سبعه"] = 7,
+        ["ثمان"] = 8, ["ثمانيه"] = 8,
+        ["تسع"] = 9, ["تسعه"] = 9,
+        ["عشر"] = 10, ["عشره"] = 10,
         ["احدعشر"] = 11, ["احدعشره"] = 11,
         ["اثناعشر"] = 12, ["اثنيعشر"] = 12,
-        ["ثلاثطعش"] = 13, ["ثلاثتعشر"] = 13,
-        ["اربعطعش"] = 14, ["اربعتعشر"] = 14,
-        ["خمسطعش"] = 15, ["خمستعشر"] = 15,
-        ["ستطعش"] = 16, ["ستتعشر"] = 16,
-        ["سبعطعش"] = 17, ["سبعتعشر"] = 17,
-        ["ثمنطعش"] = 18, ["ثمانتعشر"] = 18,
-        ["تسعطعش"] = 19, ["تسعتعشر"] = 19,
+        ["ثلاثعشر"] = 13, ["ثلاثطعش"] = 13, ["ثلاثتعشر"] = 13,
+        ["اربععشر"] = 14, ["اربعطعش"] = 14, ["اربعتعشر"] = 14,
+        ["خمسعشر"] = 15, ["خمسطعش"] = 15, ["خمستعشر"] = 15,
+        ["ستعشر"] = 16, ["ستطعش"] = 16, ["ستتعشر"] = 16,
+        ["سبععشر"] = 17, ["سبعطعش"] = 17, ["سبعتعشر"] = 17,
+        ["ثمانعشر"] = 18, ["ثمنطعش"] = 18, ["ثمانتعشر"] = 18,
+        ["تسععشر"] = 19, ["تسعطعش"] = 19, ["تسعتعشر"] = 19,
         ["عشرين"] = 20, ["عشرون"] = 20,
         ["ثلاثين"] = 30, ["ثلاثون"] = 30,
         ["اربعين"] = 40, ["اربعون"] = 40,
@@ -89,6 +89,25 @@ public static class ArabicVoiceText
         return null;
     }
 
+    public static decimal? ExtractAnyNumber(string text, decimal minimum = 0m)
+    {
+        var normalized = Normalize(text);
+        var digitMatches = Regex.Matches(normalized, @"\d+(?:\.\d+)?(?:\s*(?:الف|الاف|مليون|ملايين))?");
+        foreach (Match match in digitMatches)
+        {
+            var parsed = ParseLeadingNumber(match.Value);
+            if (parsed.HasValue && parsed.Value >= minimum) return parsed;
+        }
+
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < words.Length; i++)
+        {
+            var parsed = ParseLeadingNumber(string.Join(' ', words.Skip(i).Take(8)));
+            if (parsed.HasValue && parsed.Value >= minimum) return parsed;
+        }
+        return null;
+    }
+
     public static int? ExtractQuantity(string text)
     {
         var normalized = Normalize(text);
@@ -104,6 +123,16 @@ public static class ArabicVoiceText
         var byMarker = ExtractMoneyAfter(normalized, "الكميه", "كمية", "كميه");
         if (byMarker.HasValue && byMarker.Value > 0 && byMarker.Value <= int.MaxValue)
             return (int)Math.Round(byMarker.Value, 0, MidpointRounding.AwayFromZero);
+
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 1; i < words.Length; i++)
+        {
+            if (words[i] is not ("حبه" or "حبات" or "حزم" or "حزمه" or "كيلو" or "وحده" or "وحدات")) continue;
+            var start = Math.Max(0, i - 4);
+            var parsed = ParseLeadingNumber(string.Join(' ', words.Skip(start).Take(i - start)));
+            if (parsed.HasValue && parsed.Value > 0 && parsed.Value <= int.MaxValue)
+                return (int)Math.Round(parsed.Value, 0, MidpointRounding.AwayFromZero);
+        }
         return null;
     }
 
@@ -153,7 +182,7 @@ public static class ArabicVoiceText
 
     public static decimal? ParseLeadingNumber(string text)
     {
-        var normalized = Normalize(text);
+        var normalized = NormalizeCompoundNumbers(Normalize(text));
         if (string.IsNullOrWhiteSpace(normalized)) return null;
 
         var numeric = Regex.Match(normalized, @"^(?<n>\d+(?:\.\d+)?)\s*(?<m>الف|الاف|مليون|ملايين)?");
@@ -179,7 +208,7 @@ public static class ArabicVoiceText
             if (word == "و") continue;
             if (word.StartsWith('و') && word.Length > 1) word = word[1..];
 
-            if (word is "الف" or "الاف" or "آلاف")
+            if (word is "الف" or "الاف")
             {
                 current = current == 0 ? 1 : current;
                 total += current * 1000m;
@@ -203,8 +232,7 @@ public static class ArabicVoiceText
                 continue;
             }
 
-            var compact = word.Replace(" ", string.Empty);
-            if (NumberWords.TryGetValue(compact, out var number))
+            if (NumberWords.TryGetValue(word, out var number))
             {
                 current += number;
                 consumed = true;
@@ -215,5 +243,23 @@ public static class ArabicVoiceText
         }
 
         return consumed ? total + current : null;
+    }
+
+    private static string NormalizeCompoundNumbers(string text)
+    {
+        var replacements = new Dictionary<string, string>
+        {
+            ["احد عشر"] = "احدعشر", ["احدى عشر"] = "احدعشر",
+            ["اثنا عشر"] = "اثناعشر", ["اثني عشر"] = "اثنيعشر", ["اثنتا عشر"] = "اثناعشر",
+            ["ثلاثه عشر"] = "ثلاثعشر", ["ثلاث عشر"] = "ثلاثعشر",
+            ["اربعه عشر"] = "اربععشر", ["اربع عشر"] = "اربععشر",
+            ["خمسه عشر"] = "خمسعشر", ["خمس عشر"] = "خمسعشر",
+            ["سته عشر"] = "ستعشر", ["ست عشر"] = "ستعشر",
+            ["سبعه عشر"] = "سبععشر", ["سبع عشر"] = "سبععشر",
+            ["ثمانيه عشر"] = "ثمانعشر", ["ثمان عشر"] = "ثمانعشر",
+            ["تسعه عشر"] = "تسععشر", ["تسع عشر"] = "تسععشر"
+        };
+        foreach (var pair in replacements) text = text.Replace(pair.Key, pair.Value, StringComparison.Ordinal);
+        return text;
     }
 }
