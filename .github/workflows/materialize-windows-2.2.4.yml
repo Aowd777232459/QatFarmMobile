@@ -24,6 +24,7 @@ jobs:
       - name: Extract tested Windows source and apply final 2.2.3 fixes
         shell: pwsh
         run: |
+          Set-Location $env:GITHUB_WORKSPACE
           $archive = '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
           if (-not (Test-Path $archive)) { throw "Missing $archive" }
           Remove-Item windows-source -Recurse -Force -ErrorAction SilentlyContinue
@@ -32,7 +33,7 @@ jobs:
           if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
           $windowsRoot = $builder.Directory.Parent.FullName
 
-          $patchRoot = Join-Path (Get-Location) '.github\windows-vip-2.2.2'
+          $patchRoot = Join-Path $env:GITHUB_WORKSPACE '.github\windows-vip-2.2.2'
           $patchFiles = @(
             'QatFarm.Web\Data\DatabaseSchemaUpdater.cs',
             'QatFarm.Web\database\Upgrade_Accounting_2_1.sql',
@@ -47,11 +48,12 @@ jobs:
             Copy-Item $source $target -Force
           }
 
-          $finalPatch = Join-Path (Get-Location) '.github\windows-vip-2.2.3\Apply-FinalPatch.ps1'
+          $finalPatch = Join-Path $env:GITHUB_WORKSPACE '.github\windows-vip-2.2.3\Apply-FinalPatch.ps1'
           if (-not (Test-Path $finalPatch)) { throw 'Missing 2.2.3 final patch script.' }
           & $finalPatch -WindowsRoot $windowsRoot
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+          Set-Location $env:GITHUB_WORKSPACE
           Remove-Item 'src/QatFarm.Windows' -Recurse -Force -ErrorAction SilentlyContinue
           New-Item 'src/QatFarm.Windows' -ItemType Directory -Force | Out-Null
           Copy-Item (Join-Path $windowsRoot '*') 'src/QatFarm.Windows' -Recurse -Force
@@ -64,10 +66,12 @@ jobs:
       - name: Commit materialized Windows source
         shell: pwsh
         run: |
+          Set-Location $env:GITHUB_WORKSPACE
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/QatFarm.Windows
-          if (git diff --cached --quiet) {
+          git add --force 'src/QatFarm.Windows'
+          $status = git status --porcelain -- 'src/QatFarm.Windows'
+          if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) {
             Write-Host 'No Windows source changes to commit.'
           } else {
             git commit -m 'chore: materialize tested Windows 2.2.3 source'
