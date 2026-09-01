@@ -26,9 +26,9 @@ public sealed class InvoiceEditorModel
     public string? Notes { get; set; }
     public List<InvoiceItemInput> Items { get; set; } = [new()];
     public List<InvoiceExpenseInput> Expenses { get; set; } = [];
-    public decimal GrossAmount => AccountingMath.Gross(Items);
+    public decimal GrossAmount => AccountingMath.Gross(Items.Select(x => x.Total));
     public decimal ZakatAmount => AccountingMath.Zakat(GrossAmount, ZakatPercent);
-    public decimal TotalExpenses => AccountingMath.Expenses(Expenses);
+    public decimal TotalExpenses => AccountingMath.Expenses(Expenses.Select(x => x.Amount));
     public decimal NetAmount => AccountingMath.Net(GrossAmount, ZakatAmount, TotalExpenses);
     public decimal AmountDue => AccountingMath.Due(GrossAmount, AmountPaid);
 }
