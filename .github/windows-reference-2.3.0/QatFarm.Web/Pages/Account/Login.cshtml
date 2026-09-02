@@ -1,0 +1,27 @@
+@page "/account/login"
+@model QatFarm.Web.Pages.Account.LoginModel
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>دخول — نظام زراعي عواد سوفت</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Tahoma,"Segoe UI",Arial,sans-serif;background:#e8edf1;color:#172638;display:grid;place-items:center}.wm{position:fixed;inset:46% 0 auto;text-align:center;transform:rotate(-16deg);font-size:90px;font-weight:900;color:#0c304b;opacity:.035;pointer-events:none}.card{width:min(430px,calc(100vw - 28px));background:#fff;border:1px solid #cfd8df;box-shadow:0 14px 45px #17344b22}.head{background:#0b2f4b;color:#fff;padding:20px;text-align:center}.head img{width:54px;height:54px}.head h1{font-size:20px;margin:8px 0 2px}.head small{letter-spacing:2px}.body{padding:24px}.intro{font-size:13px;color:#536576;text-align:center;margin-bottom:20px}.field{margin:12px 0}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}.input{width:100%;height:43px;border:1px solid #c9d3db;border-radius:3px;padding:8px 10px;font-size:14px;background:#fff}.button{width:100%;height:44px;border:0;background:#2e9b49;color:#fff;font-weight:800;font-size:14px;cursor:pointer;margin-top:10px}.validation{background:#fff0ee;color:#a52a23;border:1px solid #efc5c0;padding:9px;margin:10px 0;font-size:12px}.remember{font-size:11px;color:#596b79;display:flex;gap:6px;align-items:center;margin:10px 0}.first{background:#eef7f1;border:1px solid #cce3d3;padding:9px;font-size:11px;color:#315c40;margin-bottom:12px}
+</style>
+</head><body>
+<div class="wm">AWAD SOFT</div>
+<form method="post" class="card">
+ <div class="head"><img src="/icons/icon-192.png" alt=""/><h1>نظام زراعي عواد سوفت</h1><small>AWAD SOFT</small></div>
+ <div class="body">
+  @if(Model.FirstRun){<div class="first">أول تشغيل: الاسم الذي تدخله هنا يصبح مدير النظام الأساسي.</div>}
+  <div class="intro">@(Model.FirstRun ? "أنشئ حساب المدير الأساسي" : "أدخل بيانات حسابك")</div>
+  @if(!string.IsNullOrWhiteSpace(Model.ErrorMessage)){<div class="validation">@Model.ErrorMessage</div>}
+  <div asp-validation-summary="ModelOnly" class="validation"></div><input type="hidden" asp-for="ReturnUrl" />
+  <div class="field"><label>الاسم الرباعي</label><input class="input" asp-for="Input.FullName" autocomplete="name" placeholder="الاسم الرباعي" /></div>
+  <div class="field"><label>كلمة السر — 6 أحرف أو أرقام</label><input class="input" asp-for="Input.Password" maxlength="6" autocomplete="current-password" placeholder="••••••" /></div>
+  @if(!Model.FirstRun){<label class="remember"><input asp-for="Input.RememberMe"/> تذكرني</label>}
+  <button class="button" type="submit">@(Model.FirstRun ? "إنشاء المدير والدخول" : "دخول")</button>
+ </div>
+</form>
+</body></html>
