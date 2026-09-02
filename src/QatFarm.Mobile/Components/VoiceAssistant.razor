@@ -1,6 +1,5 @@
 @inject IVoiceRecognitionService VoiceRecognition
-@inject VoiceAssistantService Assistant
-@inject QatFarmService Service
+@inject GuidedVoiceAssistantService Assistant
 @inject NavigationManager Navigation
 
 <div class="voice-assistant-root">
@@ -22,9 +21,9 @@
             </div>
 
             <div class="voice-transcript-box">
-                <label>الأمر</label>
+                <label>اسم العميل أو الأمر</label>
                 <div class="voice-command-entry">
-                    <input class="form-control" @bind="typedCommand" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="قل اسم العميل أو اكتب الأمر" />
+                    <input class="form-control" @bind="typedCommand" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="مثال: عبدالله علي صالح" />
                     <button type="button" class="voice-inline-mic" @onclick="ListenAsync" disabled="@busy">🎙</button>
                 </div>
                 <button type="button" class="btn primary voice-run-text" @onclick="InterpretTypedAsync" disabled="@(busy || string.IsNullOrWhiteSpace(typedCommand))">اذهب</button>
@@ -41,12 +40,12 @@
             @if (proposal is not null)
             {
                 <div class="voice-proposal-card @(proposal.RequiresConfirmation ? "needs-confirm" : "")">
-                    <span class="voice-understood">فهمت أنك تريد</span>
+                    <span class="voice-understood">تم الفهم</span>
                     <h3>@proposal.Title</h3>
                     <div class="voice-summary">@proposal.Summary</div>
                     @if (proposal.RequiresConfirmation)
                     {
-                        <div class="voice-confirm-note">راجع البيانات قبل التنفيذ.</div>
+                        <div class="voice-confirm-note">راجع العملية قبل التنفيذ.</div>
                         <div class="voice-actions">
                             <button type="button" class="btn primary" @onclick="ExecuteProposalAsync" disabled="@busy">تنفيذ</button>
                             <button type="button" class="btn ghost" @onclick="CancelProposal">إلغاء</button>
@@ -61,8 +60,8 @@
             }
 
             <div class="voice-examples">
-                <button type="button" @onclick='() => UseExample("فاتورة للعميل عبدالله")'>افتح فاتورة عميل</button>
-                <button type="button" @onclick='() => UseExample("عبدالله")'>اسم العميل</button>
+                <button type="button" @onclick='() => UseExample("عبدالله علي صالح")'>اسم العميل</button>
+                <button type="button" @onclick='() => UseExample("افتح الفواتير")'>الفواتير</button>
                 <button type="button" @onclick='() => UseExample("سجل خسارة سقي بمبلغ عشرين ألف")'>خسارة</button>
                 <button type="button" @onclick='() => UseExample("كم مبيعات اليوم")'>استعلام</button>
             </div>
@@ -125,42 +124,10 @@
     private async Task InterpretAsync(string command)
     {
         statusMessage = null;
-        if (await TryOpenGuidedInvoiceAsync(command)) return;
-
         proposal = await Assistant.InterpretAsync(command);
         await SpeakAsync(proposal.SpokenResponse);
         if (!proposal.RequiresConfirmation)
             await ExecuteProposalAsync();
-    }
-
-    private async Task<bool> TryOpenGuidedInvoiceAsync(string command)
-    {
-        var text = ArabicVoiceText.Normalize(command);
-        var customers = await Service.GetCustomerLookupsAsync();
-        var customer = ArabicVoiceText.FindMentioned(text, customers, x => x.Name);
-        var invoiceIntent = ArabicVoiceText.ContainsAny(text, "فاتوره", "فاتورة", "بيع", "عميل");
-        var isAccountQuestion = ArabicVoiceText.ContainsAny(text, "كم", "دين", "رصيد", "حساب", "متبقي", "تقرير", "حذف", "عدل", "تعديل");
-
-        if (customer is null && !invoiceIntent) return false;
-        if (customer is not null && isAccountQuestion) return false;
-
-        var destination = customer is null ? "/invoice/new" : $"/invoice/new?voiceCustomerId={customer.Id}";
-        proposal = new VoiceCommandProposal
-        {
-            Transcript = command,
-            Title = customer is null ? "فاتورة جديدة" : $"فاتورة {customer.Name}",
-            Summary = customer is null
-                ? "سأفتح شاشة الفاتورة لتكملها بنفسك."
-                : $"سأفتح الفاتورة وأحدد العميل {customer.Name}. اختر أنت طريقة الدفع ثم أكمل الأصناف والمبلغ.",
-            RequiresConfirmation = false,
-            NavigateTo = destination,
-            SpokenResponse = customer is null
-                ? "فتحت شاشة الفاتورة. أكمل البيانات واختر طريقة الدفع."
-                : $"تم تحديد العميل {customer.Name}. اختر طريقة الدفع وأكمل الفاتورة."
-        };
-        await SpeakAsync(proposal.SpokenResponse);
-        await ExecuteProposalAsync();
-        return true;
     }
 
     private async Task ExecuteProposalAsync()
@@ -172,7 +139,6 @@
             var result = await proposal.ExecuteAsync();
             statusOk = result.Success;
             statusMessage = result.Message;
-            await SpeakAsync(result.Message);
             if (result.Success && !string.IsNullOrWhiteSpace(result.NavigateTo))
             {
                 var destination = result.NavigateTo;
