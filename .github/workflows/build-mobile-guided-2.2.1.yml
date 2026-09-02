@@ -40,9 +40,12 @@ jobs:
           ! grep -q '<label>الموقع</label>' src/QatFarm.Mobile/Components/Pages/Farms.razor
           ! grep -q '<label>اسم المالك</label>' src/QatFarm.Mobile/Components/Pages/Farms.razor
           grep -q 'voiceCustomerId' src/QatFarm.Mobile/Components/Pages/InvoiceEdit.razor
-          grep -q 'TryOpenGuidedInvoiceAsync' src/QatFarm.Mobile/Components/VoiceAssistant.razor
-          grep -q 'اختر طريقة الدفع وأكمل' src/QatFarm.Mobile/Components/VoiceAssistant.razor
+          grep -q 'GuidedVoiceAssistantService' src/QatFarm.Mobile/Components/VoiceAssistant.razor
+          grep -q 'GuidedVoiceAssistantService' src/QatFarm.Mobile/MauiProgram.cs
+          grep -q 'اختر أنت نقدي أو آجل أو مختلط' src/QatFarm.Mobile/Services/GuidedVoiceAssistantService.cs
+          ! grep -q 'SaveInvoiceAsync' src/QatFarm.Mobile/Services/GuidedVoiceAssistantService.cs
           grep -q 'تم تحديد العميل بواسطة المعاون الصوتي' src/QatFarm.Mobile/Components/Pages/InvoiceEdit.razor
+          ! grep -RniE '(^|[^A-Za-z])VIP([^A-Za-z]|$)|في آي بي' src/QatFarm.Mobile/Components
 
   build-android:
     needs: verify-guided-flow
