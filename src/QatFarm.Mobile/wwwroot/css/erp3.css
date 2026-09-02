@@ -1,0 +1,40 @@
+:root{--erp-navy:#0c2e4a;--erp-navy-2:#123d60;--erp-bg:#eef2f5;--erp-line:#cad4dc;--erp-green:#239148;--erp-red:#c7252d;--erp-blue:#0b67a8;--erp-text:#183047;--erp-muted:#6e7d89}
+html,body{background:var(--erp-bg);color:var(--erp-text)}
+.erp3-shell{min-height:100vh;background:var(--erp-bg)}
+.erp3-sidebar{background:linear-gradient(180deg,#0b2a45 0%,#0d3657 72%,#0a273f 100%);border-left:1px solid #0a2134;box-shadow:8px 0 24px rgba(16,39,58,.08)}
+.erp3-brand{min-height:92px;border-bottom:1px solid rgba(255,255,255,.12)}
+.erp3-brand strong{font-size:18px}.erp3-brand small{letter-spacing:1.6px;color:#dfeaf2}
+.erp3-nav a{border-radius:5px;margin:2px 8px;color:#f4f8fb;min-height:42px;border:1px solid transparent}
+.erp3-nav a:hover{background:rgba(255,255,255,.08)}
+.erp3-nav a.active{background:linear-gradient(90deg,#52789a,#386481);border-color:rgba(255,255,255,.18);box-shadow:inset 3px 0 0 #69b6e7}
+.erp3-nav a span{width:28px;text-align:center;font-size:18px}
+.erp3-sidebar-footer{background:rgba(2,18,30,.24);border-top:1px solid rgba(255,255,255,.1)}
+.erp3-topbar{height:76px;background:#fff;border-bottom:1px solid #cad4dc;box-shadow:0 2px 8px rgba(25,49,68,.06)}
+.erp3-content{max-width:none;padding:14px 16px 95px}
+.erp-invoice-head{background:#fff;border:1px solid var(--erp-line);padding:10px 14px;margin:0 0 8px;border-radius:4px;box-shadow:none}
+.erp-invoice-head h1{font-size:20px!important;color:#0c3151!important}.erp-subtitle{color:var(--erp-muted)!important}
+.erp-command-bar{border:1px solid var(--erp-line)!important;border-radius:4px!important;padding:7px!important;box-shadow:none!important;background:#f9fbfc!important}
+.erp-tool{border-radius:4px!important;background:#fff!important;border:1px solid #c5d0d8!important;color:#17344e!important;padding:8px 13px!important}
+.erp-tool.save{background:#278f49!important;color:#fff!important;border-color:#217b40!important}
+.erp-box{border:1px solid #c9d4dc!important;border-radius:4px!important;box-shadow:none!important;background:#fff!important}
+.erp-box-title{background:linear-gradient(#f7f9fb,#edf2f5)!important;border-bottom:1px solid #cbd6de!important;color:#0b4b79!important;font-size:12px!important;min-height:35px!important;padding:7px 10px!important}
+.erp-fields{padding:8px!important}.erp-fields label{color:#435b6f!important;font-size:10px!important}
+.form-control{border:1px solid #bfcbd4!important;border-radius:3px!important;background:#fff!important}
+.form-control:focus{border-color:#3a80b4!important;box-shadow:0 0 0 2px rgba(58,128,180,.12)!important}
+.erp-readout{border-radius:3px!important;background:#fbfcfd!important;border-color:#d4dde4!important}
+.erp-table{font-size:11px!important}.erp-table th{background:#e9eff4!important;color:#173d5d!important;border:1px solid #c4d0d9!important}.erp-table td{border:1px solid #d7e0e6!important;background:#fff}
+.erp-table tbody tr:nth-child(even) td{background:#fafcfd}.erp-table tbody tr:hover td{background:#eef7fc!important}
+.erp-add{border-radius:3px!important;background:#259447!important}.icon-danger-btn{border-radius:2px!important;background:#cf2d35!important;color:#fff!important}
+.erp-financial-summary{border-radius:4px!important;background:#fff!important;color:var(--erp-text)!important;border:1px solid #c7d2da!important;box-shadow:none!important;padding:0!important}
+.erp-summary-title{background:#e9eff4;color:#0c4067;border-bottom:1px solid #c7d2da!important;padding:8px 10px!important;margin:0!important}
+.erp-summary-row{padding:7px 10px!important;border-bottom:1px solid #dbe3e8!important}.erp-summary-row strong{color:#16374e!important}
+.erp-summary-row.cost strong{color:#9b2d25!important}.erp-summary-row.profit strong{color:#16833b!important}.erp-summary-row.paid strong{color:#0d5e9a!important}
+.erp-summary-due{border-radius:0!important;margin:0!important;border-top:1px solid #c7d2da!important;padding:10px!important}.erp-summary-due.has-due{background:#fff6f6!important;color:#bd1f29!important}.erp-summary-due.is-paid{background:#f1fff5!important;color:#16833b!important}
+.erp-bottom-actions{background:#fff;border:1px solid #cbd5dd;border-radius:4px;padding:8px}
+.voice-fab{background:linear-gradient(145deg,#176fa8,#0a3f67)!important;border-radius:50%!important}
+.voice-sheet{border-radius:8px!important;border:1px solid #bfcdd7!important}.voice-sheet-head strong{color:#0c426b!important}
+.reference-sidebar .sidebar-caption{color:#bdd0de}
+.invoice-doc-chip{border-radius:4px!important;background:#f5f8fa!important;border:1px solid #c8d4dc!important}
+@media(min-width:901px){.erp3-workspace{margin-right:182px}.erp3-sidebar{width:182px}.reference-mobile-nav{display:none!important}.mobile-menu-button{display:none!important}.erp-invoice-grid{grid-template-columns:1.08fr 1fr .86fr!important}.erp-lower-grid{grid-template-columns:1.15fr .62fr .82fr!important}}
+@media(max-width:900px){.erp3-topbar{height:58px}.erp3-content{padding:8px 8px 88px}.erp3-sidebar{width:260px}.erp-invoice-head{padding:8px}.erp-invoice-head h1{font-size:17px!important}.erp-command-bar{overflow-x:auto;white-space:nowrap}.erp-box{border-radius:6px!important}.erp-box-title{font-size:12px!important}.erp-invoice-grid,.erp-lower-grid{grid-template-columns:1fr!important}.erp-fields.two-col{grid-template-columns:1fr 1fr!important}.erp-table-wrap{margin:0 -1px}.erp-table{min-width:620px}.reference-mobile-nav{background:#fff!important;border-top:1px solid #cad4dc!important;box-shadow:0 -3px 12px rgba(25,49,68,.08)}.reference-mobile-nav a{color:#173d5d!important}.reference-mobile-nav a.active{color:#0b6da9!important}.center-nav-action span{background:#258f49!important}}
+@media(max-width:520px){.erp-fields.two-col{grid-template-columns:1fr!important}.erp-fields .span-2{grid-column:auto!important}.topbar-user{display:none!important}.reference-title small{display:none}.erp-command-bar .erp-status{display:none}.erp-bottom-actions .btn{min-width:0;flex:1}.erp-bottom-actions{display:flex}.voice-fab{left:10px!important;bottom:78px!important}}
