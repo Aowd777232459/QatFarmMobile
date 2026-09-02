@@ -10,19 +10,30 @@
   {
    <div class="loading">جارٍ التجهيز...</div>
   }
-  else if (!hasUsers || needsCodeSetup)
+  else if (!hasUsers)
   {
    <EditForm Model="setup" OnValidSubmit="SetupAsync">
-    <label>رمز دخول المدير</label>
+    <label>الاسم الرباعي لمدير النظام</label>
+    <InputText class="form-control" @bind-Value="setup.FullName" autocomplete="name" />
+    <label>كلمة السر</label>
     <InputText class="form-control access-code-input" type="password" maxlength="6" @bind-Value="setup.AccessCode" autocomplete="new-password" />
     @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
-    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الحفظ..." : "حفظ الرمز والدخول")</button>
+    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الحفظ..." : "إنشاء المدير والدخول")</button>
+   </EditForm>
+  }
+  else if (needsCodeSetup)
+  {
+   <EditForm Model="setup" OnValidSubmit="SetupAsync">
+    <label>كلمة سر المدير</label>
+    <InputText class="form-control access-code-input" type="password" maxlength="6" @bind-Value="setup.AccessCode" autocomplete="new-password" />
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+    <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الحفظ..." : "حفظ كلمة السر والدخول")</button>
    </EditForm>
   }
   else
   {
    <EditForm Model="model" OnValidSubmit="LoginAsync">
-    <label>رمز الدخول</label>
+    <label>كلمة السر</label>
     <InputText class="form-control access-code-input" type="password" maxlength="6" @bind-Value="model.AccessCode" autocomplete="current-password" />
     @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
     <button class="btn primary full login-submit" type="submit" disabled="@busy">@(busy ? "جارٍ الدخول..." : "دخول")</button>
@@ -65,7 +76,7 @@
    if (!result.Success) { error = result.Message; return; }
    await OnLoggedIn.InvokeAsync();
   }
-  catch (Exception ex) { error = $"تعذر حفظ رمز الدخول: {ex.Message}"; }
+  catch (Exception ex) { error = $"تعذر حفظ بيانات الدخول: {ex.Message}"; }
   finally { busy = false; }
  }
 
