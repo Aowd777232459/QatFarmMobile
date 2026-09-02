@@ -1,4 +1,5 @@
 #if WINDOWS
+using Microsoft.Maui;
 using Microsoft.UI.Xaml;
 
 namespace QatFarm.Mobile.WinUI;
