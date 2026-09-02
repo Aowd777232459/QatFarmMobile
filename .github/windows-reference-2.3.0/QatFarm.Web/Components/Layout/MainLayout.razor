@@ -1,0 +1,35 @@
+@inherits LayoutComponentBase
+
+<div class="ref-shell">
+    <aside class="ref-sidebar" id="sidebar">
+        <div class="ref-brand">
+            <img src="/icons/icon-192.png" alt="" />
+            <div><strong>عواد سوفت</strong><span>AWAD SOFT</span></div>
+        </div>
+        <div class="ref-menu-title">القائمة الرئيسية</div>
+        <NavMenu />
+        <div class="ref-side-footer">
+            <AuthorizeView>
+                <Authorized Context="auth">
+                    <strong>@auth.User.Identity?.Name</strong>
+                    <small>مستخدم النظام</small>
+                </Authorized>
+            </AuthorizeView>
+            <span>الإصدار 2.3.0</span>
+            <a href="/account/logout">تسجيل الخروج</a>
+        </div>
+    </aside>
+
+    <main class="ref-main">
+        <header class="ref-topbar">
+            <button class="ref-mobile-menu" onclick="toggleSidebar()" aria-label="القائمة">☰</button>
+            <div class="ref-system-title"><strong>نظام زراعي عواد سوفت</strong><small>لإدارة المزارع وبيع القات</small></div>
+            <div class="ref-user-info"><span>@DateTime.Now.ToString("dd/MM/yyyy")</span><AuthorizeView><Authorized Context="auth"><b>@auth.User.Identity?.Name</b></Authorized></AuthorizeView></div>
+            <a class="ref-top-icon" href="/settings">⚙</a>
+            <a class="ref-top-icon" href="/account/logout">✕</a>
+        </header>
+        <section class="ref-page">@Body</section>
+        <div class="ref-watermark" aria-hidden="true"><strong>AWAD SOFT</strong><span>عواد سوفت</span></div>
+        <VoiceAssistant />
+    </main>
+</div>
