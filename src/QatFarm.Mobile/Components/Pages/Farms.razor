@@ -8,9 +8,7 @@
  <EditForm Model="model" OnValidSubmit="SaveAsync">
   <div class="form-grid">
    <div><label>اسم المزرعة</label><InputText class="form-control" @bind-Value="model.Name" /></div>
-   <div><label>اسم المالك</label><InputText class="form-control" @bind-Value="model.OwnerName" /></div>
    <div><label>الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
-   <div><label>الموقع</label><InputText class="form-control" @bind-Value="model.Location" /></div>
   </div>
   <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
   <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" @onclick="Reset">جديد</button></div>
@@ -21,7 +19,7 @@
 @foreach (var farm in farms)
 {
  <div class="data-card farm-card">
-  <div class="grow"><strong>@farm.Name</strong><small>@farm.Location — @farm.Phone</small></div>
+  <div class="grow"><strong>@farm.Name</strong><small>المالك: @farm.OwnerName@(string.IsNullOrWhiteSpace(farm.Phone) ? "" : $" — {farm.Phone}")</small></div>
   @if (Session.IsAdmin)
   {
    <div class="actions">
@@ -45,10 +43,16 @@
  private async Task LoadAsync() => farms = await Service.GetFarmsAsync();
  private async Task SaveAsync()
  {
-  try { await Service.SaveFarmAsync(model); ok=true; message="تم الحفظ."; Reset(); await LoadAsync(); }
+  try
+  {
+   model.OwnerName = await Session.GetPrimaryAdministratorNameAsync();
+   model.Location = string.Empty;
+   await Service.SaveFarmAsync(model);
+   ok=true; message="تم الحفظ."; Reset(); await LoadAsync();
+  }
   catch(Exception ex){ok=false;message=ex.Message;}
  }
- private void Edit(Farm x) => model = new Farm { Id=x.Id,Name=x.Name,OwnerName=x.OwnerName,Phone=x.Phone,Location=x.Location,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt };
+ private void Edit(Farm x) => model = new Farm { Id=x.Id,Name=x.Name,OwnerName=x.OwnerName,Phone=x.Phone,Location=string.Empty,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt };
  private void Reset() => model = new Farm();
  private async Task DeleteAsync(long id){try{await Service.DeleteFarmAsync(id);await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
 }
