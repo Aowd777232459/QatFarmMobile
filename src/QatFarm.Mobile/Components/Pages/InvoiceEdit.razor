@@ -32,6 +32,11 @@ else
         </span>
     </div>
 
+    @if (voiceGuided)
+    {
+        <div class="alert success">تم تحديد العميل بواسطة المعاون الصوتي. اختر طريقة الدفع وأكمل بيانات الفاتورة ثم احفظها بنفسك.</div>
+    }
+
     <div class="erp-invoice-grid">
         <section class="erp-box customer-box">
             <div class="erp-box-title">بيانات العميل</div>
@@ -222,6 +227,7 @@ else
 
 @code {
     [Parameter] public long Id { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "voiceCustomerId")] public long? VoiceCustomerId { get; set; }
     private InvoiceEditorModel model = new();
     private List<Farm> farms = [];
     private List<Customer> customers = [];
@@ -229,6 +235,7 @@ else
     private List<DailyExpenseType> expenseTypes = [];
     private CustomerBalanceRow? selectedCustomerAccount;
     private bool loaded;
+    private bool voiceGuided;
     private string? message;
     private decimal EffectivePaid => model.CustomerId.HasValue ? model.AmountPaid : model.GrossAmount;
     private decimal EffectiveDue => AccountingMath.Due(model.GrossAmount, EffectivePaid);
@@ -242,6 +249,21 @@ else
         qatTypes = await Service.GetQatTypesAsync();
         expenseTypes = await Service.GetDailyExpenseTypesAsync();
         model = Id == 0 ? new InvoiceEditorModel() : await Service.GetInvoiceEditorAsync(Id);
+        voiceGuided = false;
+
+        if (Id == 0 && VoiceCustomerId.HasValue)
+        {
+            var customer = customers.FirstOrDefault(x => x.Id == VoiceCustomerId.Value);
+            if (customer is not null)
+            {
+                model.CustomerId = customer.Id;
+                model.BuyerName = customer.Name;
+                model.BuyerPhone = customer.Phone;
+                model.AmountPaid = 0m;
+                voiceGuided = true;
+            }
+        }
+
         await LoadCustomerAccountAsync();
         loaded = true;
     }
@@ -253,6 +275,7 @@ else
 
     private async Task CustomerChangedAsync()
     {
+        voiceGuided = false;
         if (!model.CustomerId.HasValue)
         {
             model.PaymentMethod = PaymentMethod.Cash;
