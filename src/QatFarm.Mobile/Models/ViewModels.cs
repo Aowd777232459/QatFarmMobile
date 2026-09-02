@@ -7,6 +7,7 @@ public sealed class LoginModel
 
 public sealed class FirstRunAdminModel
 {
+    public string FullName { get; set; } = string.Empty;
     public string AccessCode { get; set; } = string.Empty;
 }
 
