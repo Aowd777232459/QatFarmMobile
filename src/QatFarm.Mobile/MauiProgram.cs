@@ -25,6 +25,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<LocalSyncService>();
         builder.Services.AddSingleton<IVoiceRecognitionService, AndroidVoiceRecognitionService>();
         builder.Services.AddSingleton<VoiceAssistantService>();
+        builder.Services.AddSingleton<GuidedVoiceAssistantService>();
         return builder.Build();
     }
 }
