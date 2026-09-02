@@ -1,0 +1,16 @@
+<nav class="ref-nav">
+    <NavLink href="" Match="NavLinkMatch.All"><span>◉</span>لوحة التحكم</NavLink>
+    <NavLink href="invoices"><span>▤</span>الفواتير</NavLink>
+    <NavLink href="customers"><span>●</span>العملاء</NavLink>
+    <NavLink href="farms"><span>♣</span>المزارع</NavLink>
+    <NavLink href="cultivation-expenses"><span>✦</span>الخسائر</NavLink>
+    <NavLink href="accounting"><span>▣</span>الديون والمدفوعات</NavLink>
+    <NavLink href="sales/new"><span>＋</span>فاتورة بيع</NavLink>
+    <NavLink href="reports"><span>▧</span>التقارير</NavLink>
+    <NavLink href="zakat"><span>◈</span>الزكاة</NavLink>
+    <AuthorizeView Roles="Administrator">
+        <NavLink href="users"><span>♟</span>المستخدمون</NavLink>
+        <NavLink href="audit-logs"><span>⌁</span>سجل التدقيق</NavLink>
+        <NavLink href="settings"><span>⚙</span>الإعدادات</NavLink>
+    </AuthorizeView>
+</nav>
