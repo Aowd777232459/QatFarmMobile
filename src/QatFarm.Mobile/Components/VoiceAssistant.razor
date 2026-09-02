@@ -1,5 +1,6 @@
 @inject IVoiceRecognitionService VoiceRecognition
 @inject VoiceAssistantService Assistant
+@inject QatFarmService Service
 @inject NavigationManager Navigation
 
 <div class="voice-assistant-root">
@@ -23,10 +24,10 @@
             <div class="voice-transcript-box">
                 <label>الأمر</label>
                 <div class="voice-command-entry">
-                    <input class="form-control" @bind="typedCommand" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="تكلم أو اكتب الأمر هنا" />
+                    <input class="form-control" @bind="typedCommand" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="قل اسم العميل أو اكتب الأمر" />
                     <button type="button" class="voice-inline-mic" @onclick="ListenAsync" disabled="@busy">🎙</button>
                 </div>
-                <button type="button" class="btn primary voice-run-text" @onclick="InterpretTypedAsync" disabled="@(busy || string.IsNullOrWhiteSpace(typedCommand))">تنفيذ الأمر</button>
+                <button type="button" class="btn primary voice-run-text" @onclick="InterpretTypedAsync" disabled="@(busy || string.IsNullOrWhiteSpace(typedCommand))">اذهب</button>
             </div>
 
             @if (listening)
@@ -60,10 +61,10 @@
             }
 
             <div class="voice-examples">
-                <button type="button" @onclick='() => UseExample("فاتورة لعبدالله 10 حبات أميال سعر 5000 دفع 20000")'>فاتورة</button>
+                <button type="button" @onclick='() => UseExample("فاتورة للعميل عبدالله")'>افتح فاتورة عميل</button>
+                <button type="button" @onclick='() => UseExample("عبدالله")'>اسم العميل</button>
                 <button type="button" @onclick='() => UseExample("سجل خسارة سقي بمبلغ عشرين ألف")'>خسارة</button>
                 <button type="button" @onclick='() => UseExample("كم مبيعات اليوم")'>استعلام</button>
-                <button type="button" @onclick='() => UseExample("صدر فواتير أغسطس PDF")'>تقرير PDF</button>
             </div>
         </section>
     }
@@ -86,7 +87,7 @@
         if (!VoiceRecognition.IsSupported)
         {
             statusOk = false;
-            statusMessage = "التعرف الصوتي غير متاح على هذا الجهاز. اكتب الأمر في الخانة وسيعمل المعاون بنفس الطريقة.";
+            statusMessage = "التعرف الصوتي غير متاح على هذا الجهاز. اكتب اسم العميل أو الأمر في الخانة.";
             return;
         }
 
@@ -124,10 +125,42 @@
     private async Task InterpretAsync(string command)
     {
         statusMessage = null;
+        if (await TryOpenGuidedInvoiceAsync(command)) return;
+
         proposal = await Assistant.InterpretAsync(command);
         await SpeakAsync(proposal.SpokenResponse);
         if (!proposal.RequiresConfirmation)
             await ExecuteProposalAsync();
+    }
+
+    private async Task<bool> TryOpenGuidedInvoiceAsync(string command)
+    {
+        var text = ArabicVoiceText.Normalize(command);
+        var customers = await Service.GetCustomerLookupsAsync();
+        var customer = ArabicVoiceText.FindMentioned(text, customers, x => x.Name);
+        var invoiceIntent = ArabicVoiceText.ContainsAny(text, "فاتوره", "فاتورة", "بيع", "عميل");
+        var isAccountQuestion = ArabicVoiceText.ContainsAny(text, "كم", "دين", "رصيد", "حساب", "متبقي", "تقرير", "حذف", "عدل", "تعديل");
+
+        if (customer is null && !invoiceIntent) return false;
+        if (customer is not null && isAccountQuestion) return false;
+
+        var destination = customer is null ? "/invoice/new" : $"/invoice/new?voiceCustomerId={customer.Id}";
+        proposal = new VoiceCommandProposal
+        {
+            Transcript = command,
+            Title = customer is null ? "فاتورة جديدة" : $"فاتورة {customer.Name}",
+            Summary = customer is null
+                ? "سأفتح شاشة الفاتورة لتكملها بنفسك."
+                : $"سأفتح الفاتورة وأحدد العميل {customer.Name}. اختر أنت طريقة الدفع ثم أكمل الأصناف والمبلغ.",
+            RequiresConfirmation = false,
+            NavigateTo = destination,
+            SpokenResponse = customer is null
+                ? "فتحت شاشة الفاتورة. أكمل البيانات واختر طريقة الدفع."
+                : $"تم تحديد العميل {customer.Name}. اختر طريقة الدفع وأكمل الفاتورة."
+        };
+        await SpeakAsync(proposal.SpokenResponse);
+        await ExecuteProposalAsync();
+        return true;
     }
 
     private async Task ExecuteProposalAsync()
