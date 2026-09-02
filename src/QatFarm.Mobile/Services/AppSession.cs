@@ -22,6 +22,15 @@ public sealed class AppSession
         return await db.Table<AppUser>().Where(x => !x.IsDeleted).CountAsync() > 0;
     }
 
+    public async Task<string> GetPrimaryAdministratorNameAsync()
+    {
+        var db = await _db.GetAsync();
+        var admins = await db.Table<AppUser>()
+            .Where(x => !x.IsDeleted && x.Role == UserRole.Administrator)
+            .ToListAsync();
+        return admins.OrderBy(x => x.Id).FirstOrDefault()?.FullName?.Trim() ?? CurrentUser?.FullName?.Trim() ?? "مدير النظام";
+    }
+
     public async Task<bool> NeedsAccessCodeSetupAsync()
     {
         var db = await _db.GetAsync();
@@ -34,13 +43,18 @@ public sealed class AppSession
         var db = await _db.GetAsync();
         if (await db.Table<AppUser>().Where(x => !x.IsDeleted).CountAsync() > 0)
             return (false, "تم إنشاء حساب الإدارة مسبقاً.");
+
+        var fullName = NormalizeFullName(model.FullName);
+        if (fullName is null)
+            return (false, "أدخل الاسم الرباعي الكامل لمدير النظام.");
+
         var code = NormalizeAccessCode(model.AccessCode);
-        if (code is null) return (false, "رمز الدخول يجب أن يتكون من 6 أحرف بالضبط.");
+        if (code is null) return (false, "كلمة السر يجب أن تتكون من 6 أحرف أو أرقام بالضبط.");
 
         var (hash, salt) = PasswordHasher.HashPassword(code);
         var user = new AppUser
         {
-            FullName = "مدير النظام",
+            FullName = fullName,
             Email = $"admin-{Guid.NewGuid():N}@local.awad",
             PasswordHash = hash,
             PasswordSalt = salt,
@@ -61,7 +75,7 @@ public sealed class AppSession
     public async Task<(bool Success, string Message)> SetupExistingAdministratorAccessCodeAsync(string accessCode)
     {
         var code = NormalizeAccessCode(accessCode);
-        if (code is null) return (false, "رمز الدخول يجب أن يتكون من 6 أحرف بالضبط.");
+        if (code is null) return (false, "كلمة السر يجب أن تتكون من 6 أحرف أو أرقام بالضبط.");
         var db = await _db.GetAsync();
         var admin = (await db.Table<AppUser>().Where(x => !x.IsDeleted && x.IsActive && x.Role == UserRole.Administrator).ToListAsync())
             .OrderBy(x => x.Id).FirstOrDefault();
@@ -84,12 +98,12 @@ public sealed class AppSession
     public async Task<(bool Success, string Message)> LoginAsync(string accessCode)
     {
         var code = NormalizeAccessCode(accessCode);
-        if (code is null) return (false, "أدخل رمز الدخول المكون من 6 أحرف.");
+        if (code is null) return (false, "أدخل كلمة السر المكونة من 6 أحرف أو أرقام.");
         var db = await _db.GetAsync();
         var users = await db.Table<AppUser>().Where(x => !x.IsDeleted && x.IsActive).ToListAsync();
         var user = users.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.AccessCodeHash) &&
             PasswordHasher.Verify(code, x.AccessCodeHash, x.AccessCodeSalt));
-        if (user is null) return (false, "رمز الدخول غير صحيح أو الحساب موقوف.");
+        if (user is null) return (false, "كلمة السر غير صحيحة أو الحساب موقوف.");
         user.LastLoginAt = DateTime.Now;
         await db.UpdateAsync(user);
         CurrentUser = user;
@@ -101,6 +115,14 @@ public sealed class AppSession
     {
         var code = value?.Trim() ?? string.Empty;
         return code.Length == 6 && code.All(c => !char.IsWhiteSpace(c)) ? code : null;
+    }
+
+    private static string? NormalizeFullName(string? value)
+    {
+        var name = string.Join(' ', (value ?? string.Empty)
+            .Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 4 ? name : null;
     }
 
     public void Logout() { CurrentUser = null; Changed?.Invoke(); }
