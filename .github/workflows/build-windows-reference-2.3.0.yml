@@ -1,0 +1,105 @@
+name: AWAD SOFT Windows Reference 2.3.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [final/voice-guided-2.2.1]
+    paths:
+      - '.github/windows-reference-2.3.0/**'
+      - '.github/workflows/build-windows-reference-2.3.0.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract and patch Windows source
+        shell: pwsh
+        run: |
+          Expand-Archive '.github/QatFarmSystem_Windows_VIP_2.2.0.zip' -DestinationPath windows-source -Force
+          $builder=Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
+          if(-not $builder){throw 'Build-Installer.ps1 was not found.'}
+          $root=$builder.Directory.Parent.FullName
+          $stablePatch=Join-Path (Get-Location) '.github\windows-vip-2.2.2'
+          Get-ChildItem $stablePatch -Recurse -File | ForEach-Object {
+            $relative=$_.FullName.Substring($stablePatch.Length).TrimStart('\')
+            $target=Join-Path $root $relative
+            New-Item (Split-Path $target -Parent) -ItemType Directory -Force | Out-Null
+            Copy-Item $_.FullName $target -Force
+          }
+          & '.github\windows-reference-2.3.0\Apply-ReferencePatch.ps1' -Root $root
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          "WINDOWS_ROOT=$root" | Out-File $env:GITHUB_ENV -Append
+          "WINDOWS_BUILDER=$($builder.FullName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Reference and safety gates
+        shell: pwsh
+        run: |
+          $sales=Get-Content "$env:WINDOWS_ROOT\QatFarm.Web\Components\Pages\Sales.razor" -Raw
+          $login=Get-Content "$env:WINDOWS_ROOT\QatFarm.Web\Pages\Account\Login.cshtml" -Raw
+          $farm=Get-Content "$env:WINDOWS_ROOT\QatFarm.Web\Components\Pages\Farms.razor" -Raw
+          $layout=Get-Content "$env:WINDOWS_ROOT\QatFarm.Web\Components\Layout\MainLayout.razor" -Raw
+          $voice=Get-Content "$env:WINDOWS_ROOT\QatFarm.Web\Components\Shared\VoiceAssistant.razor" -Raw
+          if($sales -notmatch 'voiceCustomerId'){throw 'Guided customer selection missing.'}
+          if($sales -notmatch 'المتبقي على العميل'){throw 'Invoice debt summary missing.'}
+          if($login -notmatch 'الاسم الرباعي'){throw 'First-run full name field missing.'}
+          if($farm -match 'اسم المالك|الموقع'){throw 'Farm form still asks for owner/location.'}
+          if($layout -notmatch 'ref-sidebar'){throw 'Reference sidebar missing.'}
+          if($voice -match 'SaveAsync|SaveInvoice|InvoiceService'){throw 'Voice assistant must not save invoices.'}
+          if($voice -notmatch 'voiceCustomerId'){throw 'Voice customer navigation missing.'}
+
+      - name: Compile source
+        shell: pwsh
+        run: |
+          dotnet restore "$env:WINDOWS_ROOT\QatFarm.Web\QatFarm.Web.csproj"
+          dotnet build "$env:WINDOWS_ROOT\QatFarm.Web\QatFarm.Web.csproj" -c Release --no-restore
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & $env:WINDOWS_BUILDER -SkipToolInstall -NoExplorer
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+
+      - name: Smoke install and start
+        shell: pwsh
+        run: |
+          $setup=Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if(-not $setup){throw 'Setup was not produced.'}
+          $installDir=Join-Path $env:RUNNER_TEMP 'AWAD-SOFT-QatFarm-Reference'
+          $p=Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOSQL',"/DIR=$installDir" -PassThru -Wait
+          if($p.ExitCode -ne 0){throw "Installer exited with $($p.ExitCode)."}
+          $app=Join-Path $installDir 'QatFarm.Web.exe'
+          if(-not(Test-Path $app)){throw 'Installed executable missing.'}
+          $env:DesktopMode__AutoOpenBrowser='false'
+          $running=Start-Process $app -WorkingDirectory $installDir -PassThru
+          Start-Sleep -Seconds 12
+          if($running.HasExited){throw "Application exited early: $($running.ExitCode)"}
+          Stop-Process -Id $running.Id -Force
+
+      - name: Collect installer
+        shell: pwsh
+        run: |
+          New-Item release -ItemType Directory -Force | Out-Null
+          $setup=Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-2.3.0-Reference-Setup.exe' -Force
+          $hash=Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-2.3.0-Reference-Setup.exe' -Algorithm SHA256
+          "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-2.3.0-Reference-Setup.exe" | Set-Content release/SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AWAD-SOFT-QatFarm-Windows-2.3.0-Reference-Setup
+          path: release/*
+          retention-days: 30
