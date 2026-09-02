@@ -178,14 +178,15 @@ jobs:
         shell: pwsh
         run: |
           $project=(Resolve-Path 'src/QatFarm.Mobile/QatFarm.Mobile.csproj').Path
-          dotnet restore $project -p:TargetFramework=net10.0-windows10.0.19041.0 -r win-x64
+          dotnet restore $project -p:TargetFramework=net10.0-windows10.0.19041.0 -r win-x64 -p:PublishReadyToRun=false
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build $project -f net10.0-windows10.0.19041.0 -c Release -r win-x64 --no-restore -p:WindowsPackageType=None
+          dotnet build $project -f net10.0-windows10.0.19041.0 -c Release -r win-x64 --no-restore -p:WindowsPackageType=None -p:PublishReadyToRun=false
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet publish $project -f net10.0-windows10.0.19041.0 -c Release -r win-x64 --self-contained true --no-restore `
             -p:WindowsPackageType=None `
             -p:WindowsAppSDKSelfContained=true `
             -p:PublishSingleFile=false `
+            -p:PublishReadyToRun=false `
             -o win-publish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path 'win-publish/QatFarm.Mobile.exe')) { throw 'Windows executable was not produced.' }
