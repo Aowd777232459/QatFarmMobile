@@ -1,0 +1,16 @@
+@inject CustomerService Customers
+@inject NavigationManager Navigation
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<div class="ref-voice">
+ <button class="ref-voice-fab @(listening?"listening":"")" @onclick="Listen" title="المعاون الصوتي">🎙<small>صوت</small></button>
+ @if(open){<div class="ref-voice-back" @onclick="Close"></div><section class="ref-voice-sheet"><div class="ref-voice-head"><b>المعاون الصوتي</b><button @onclick="Close">×</button></div><p>قل اسم العميل، وسأفتح الفاتورة وأحدد العميل فقط. أنت تختار الدفع والأصناف وتحفظ.</p><div class="ref-voice-input"><input class="form-control" @bind="text" @bind:event="oninput" placeholder="اسم العميل أو الأمر"/><button class="ref-btn primary" @onclick="Run">اذهب</button></div>@if(!string.IsNullOrWhiteSpace(message)){<div class="ref-voice-result">@message</div>}</section>}
+</div>
+
+@code{
+ private bool open,listening; private string text=""; private string? message;
+ private async Task Listen(){open=true;listening=true;message=null;try{var heard=await JS.InvokeAsync<string?>("awadVoice.listen");if(!string.IsNullOrWhiteSpace(heard)){text=heard;await Run();}else message="لم أسمع اسماً واضحاً.";}catch{message="تعذر استخدام الميكروفون. اكتب اسم العميل في الخانة.";}finally{listening=false;}}
+ private async Task Run(){var q=Normalize(text);if(string.IsNullOrWhiteSpace(q))return;var rows=await Customers.GetAllAsync();var customer=rows.FirstOrDefault(x=>q.Contains(Normalize(x.Name))||Normalize(x.Name).Contains(q));if(customer is not null){message=$"تم تحديد {customer.Name}.";open=false;Navigation.NavigateTo($"/sales/new?voiceCustomerId={customer.Id}");return;}if(q.Contains("فاتور")){open=false;Navigation.NavigateTo("/sales/new");return;}if(q.Contains("عملا")){open=false;Navigation.NavigateTo("/customers");return;}if(q.Contains("مزار")){open=false;Navigation.NavigateTo("/farms");return;}if(q.Contains("خسار")){open=false;Navigation.NavigateTo("/cultivation-expenses");return;}if(q.Contains("تقرير")){open=false;Navigation.NavigateTo("/reports");return;}if(q.Contains("زكا")){open=false;Navigation.NavigateTo("/zakat");return;}message="لم أجد العميل. قل الاسم كما هو مسجل أو افتح الفاتورة واختره يدويًا.";}
+ private static string Normalize(string? s)=>(s??"").Trim().ToLowerInvariant().Replace("أ","ا").Replace("إ","ا").Replace("آ","ا").Replace("ة","ه").Replace("ى","ي");
+ private void Close(){open=false;message=null;}
+}
