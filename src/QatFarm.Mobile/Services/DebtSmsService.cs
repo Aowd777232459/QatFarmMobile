@@ -1,5 +1,7 @@
+#if ANDROID
 using Android.Telephony;
 using Microsoft.Maui.ApplicationModel;
+#endif
 using QatFarm.Mobile.Models;
 
 namespace QatFarm.Mobile.Services;
@@ -7,6 +9,7 @@ namespace QatFarm.Mobile.Services;
 public sealed record DebtSmsResult(bool Sent, string Message);
 public sealed record SaleSmsItem(string Name, int Quantity, decimal UnitPrice, decimal Total);
 
+#if ANDROID
 public sealed class SendSmsPermission : Permissions.BasePlatformPermission
 {
     public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
@@ -14,6 +17,7 @@ public sealed class SendSmsPermission : Permissions.BasePlatformPermission
         (Android.Manifest.Permission.SendSms, true)
     ];
 }
+#endif
 
 public sealed class DebtSmsService
 {
@@ -52,6 +56,7 @@ public sealed class DebtSmsService
 
     private static async Task<DebtSmsResult> SendAsync(string phoneValue, string text)
     {
+#if ANDROID
         try
         {
             var permission = await Permissions.CheckStatusAsync<SendSmsPermission>();
@@ -75,6 +80,10 @@ public sealed class DebtSmsService
         {
             return new(false, $"تعذر إرسال SMS: {ex.Message}");
         }
+#else
+        await Task.CompletedTask;
+        return new(false, "نسخة الكمبيوتر لا ترسل SMS مباشرة؛ يتم الإرسال من نسخة الهاتف عند المزامنة.");
+#endif
     }
 
     private static string NormalizePhone(string value)
