@@ -1,3 +1,5 @@
+using QatFarm.Mobile.Models;
+
 namespace QatFarm.Mobile.Services;
 
 /// <summary>
@@ -24,12 +26,10 @@ public sealed class GuidedVoiceAssistantService
         if (text.Length == 0)
             return Info(original, "لم أسمع اسماً أو أمراً واضحاً.", "قل اسم العميل أو اسم الشاشة التي تريد فتحها.");
 
-        // Reports and read-only accounting questions keep their existing behavior.
         if (ArabicVoiceText.ContainsAny(text, "pdf", "بي دي اف", "تقرير", "تقارير", "صدر", "تصدير") ||
             ArabicVoiceText.ContainsAny(text, "كم", "رصيد", "دين", "حساب", "مبيعات", "الزكاه", "الزكاة", "الربح", "الارباح", "الأرباح"))
             return await legacy.InterpretAsync(original);
 
-        // Editing/deleting invoices by voice is disabled. Move the user to the list instead.
         if (ArabicVoiceText.ContainsAny(text, "فاتوره", "فاتورة") &&
             ArabicVoiceText.ContainsAny(text, "عدل", "تعديل", "غير", "احذف", "حذف", "امسح", "الغ"))
         {
@@ -45,9 +45,8 @@ public sealed class GuidedVoiceAssistantService
         }
 
         var customers = await service.GetCustomerLookupsAsync();
-        var customer = ArabicVoiceText.FindMentioned(text, customers, x => x.Name);
+        var customer = FindCustomerSafely(text, customers);
 
-        // Saying only the customer's name is enough to start a guided invoice.
         if (customer is not null)
         {
             return new VoiceCommandProposal
@@ -61,14 +60,13 @@ public sealed class GuidedVoiceAssistantService
             };
         }
 
-        // Any invoice/بيع command is guided only; it never creates/saves an invoice.
         if (ArabicVoiceText.ContainsAny(text, "فاتوره", "فاتورة", "بيع", "عميل"))
         {
             return new VoiceCommandProposal
             {
                 Transcript = original,
                 Title = "فتح فاتورة جديدة",
-                Summary = "لم أجد اسم عميل مسجل في الكلام. سأفتح شاشة الفاتورة، ثم اختر العميل يدويًا أو أعد المحاولة بذكر اسمه كما هو مسجل.",
+                Summary = "لم أجد اسماً وحيداً مطابقاً لعميل مسجل. سأفتح شاشة الفاتورة، ثم اختر العميل يدويًا أو أعد ذكر جزء أوضح من اسمه.",
                 RequiresConfirmation = false,
                 NavigateTo = "/invoice/new",
                 SpokenResponse = "تم فتح فاتورة جديدة. اختر العميل وطريقة الدفع وأكمل البيانات."
@@ -76,6 +74,43 @@ public sealed class GuidedVoiceAssistantService
         }
 
         return await legacy.InterpretAsync(original);
+    }
+
+    private static Customer? FindCustomerSafely(string text, IReadOnlyList<Customer> customers)
+    {
+        var exact = ArabicVoiceText.FindMentioned(text, customers, x => x.Name);
+        if (exact is not null) return exact;
+
+        var normalized = ArabicVoiceText.Normalize(text);
+        var ignored = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "فاتوره", "بيع", "العميل", "عميل", "للعميل", "افتح", "افتحلي", "اعمل", "انشئ", "سوي", "جديد", "اسم", "لو سمحت"
+        };
+        var spoken = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => x.Length >= 2 && !ignored.Contains(x))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (spoken.Length == 0) return null;
+
+        var ranked = customers.Select(customer =>
+        {
+            var name = ArabicVoiceText.Normalize(customer.Name);
+            var nameTokens = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var matches = spoken.Count(word => nameTokens.Any(token => token == word ||
+                (word.Length >= 4 && token.StartsWith(word, StringComparison.Ordinal)) ||
+                (token.Length >= 4 && word.StartsWith(token, StringComparison.Ordinal))));
+            return new { Customer = customer, Matches = matches, NameTokenCount = nameTokens.Length };
+        })
+        .Where(x => x.Matches > 0)
+        .OrderByDescending(x => x.Matches)
+        .ThenBy(x => x.NameTokenCount)
+        .ToList();
+
+        if (ranked.Count == 0) return null;
+        var best = ranked[0];
+        if (spoken.Length > 1 && best.Matches < Math.Min(2, spoken.Length)) return null;
+        var tied = ranked.Count(x => x.Matches == best.Matches);
+        return tied == 1 ? best.Customer : null;
     }
 
     private static VoiceCommandProposal Info(string transcript, string title, string summary)
