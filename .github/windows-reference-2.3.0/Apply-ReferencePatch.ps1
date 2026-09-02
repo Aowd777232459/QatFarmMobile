@@ -8,6 +8,7 @@ $text=$text.Replace('options.Password.RequireDigit = true;','options.Password.Re
 $text=$text.Replace('options.Password.RequireLowercase = true;','options.Password.RequireLowercase = false;')
 $text=$text.Replace('options.Password.RequireUppercase = true;','options.Password.RequireUppercase = false;')
 $text=$text.Replace('options.Password.RequireNonAlphanumeric = true;','options.Password.RequireNonAlphanumeric = false;')
+$text=$text.Replace('options.User.RequireUniqueEmail = true;','options.User.RequireUniqueEmail = true;`r`n    options.User.AllowedUserNameCharacters = null;')
 Set-Content $program $text -Encoding utf8
 
 $dbinit=Join-Path $Root 'QatFarm.Web\Data\DbInitializer.cs'
