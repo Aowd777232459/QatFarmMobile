@@ -1,0 +1,38 @@
+@page "/farms"
+@attribute [Authorize]
+@inject FarmService Service
+
+<PageTitle>المزارع</PageTitle>
+<div class="ref-page-head"><h1>المزارع</h1><button class="ref-btn primary" @onclick="NewFarm">＋ مزرعة جديدة</button></div>
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="alert success">@message</div> }
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+<div class="ref-split">
+ <section class="ref-panel">
+  <div class="ref-panel-title">@(model.Id == 0 ? "إضافة مزرعة" : "تعديل المزرعة")</div>
+  <EditForm Model="model" OnValidSubmit="Save"><DataAnnotationsValidator /><ValidationSummary class="validation-summary" />
+   <div class="ref-form-grid one">
+    <div class="field"><label>اسم المزرعة *</label><InputText class="form-control" @bind-Value="model.Name" /></div>
+    <div class="field"><label>رقم الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
+    <div class="field"><label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" /></div>
+    <label class="switch-line"><InputCheckbox @bind-Value="model.IsActive" /> نشطة</label>
+   </div>
+   <div class="ref-actions"><button class="ref-btn primary" type="submit">حفظ</button><button class="ref-btn" type="button" @onclick="NewFarm">جديد</button></div>
+  </EditForm>
+ </section>
+ <section class="ref-panel">
+  <div class="ref-panel-title">قائمة المزارع</div>
+  <div class="table-responsive"><table class="ref-table"><thead><tr><th>المزرعة</th><th>المالك</th><th>الهاتف</th><th>الحالة</th><th></th></tr></thead><tbody>
+  @foreach(var farm in farms){<tr><td><b>@farm.Name</b></td><td>@(farm.OwnerName??"—")</td><td>@(farm.Phone??"—")</td><td>@(farm.IsActive?"نشطة":"متوقفة")</td><td><button @onclick="() => Edit(farm)">تعديل</button><AuthorizeView Roles="Administrator"><button class="danger-action" @onclick="() => Delete(farm.Id)">حذف</button></AuthorizeView></td></tr>}
+  </tbody></table></div>
+ </section>
+</div>
+@code{
+ private List<Farm> farms=[]; private Farm model=NewModel(); private string? message,error;
+ protected override async Task OnInitializedAsync()=>await Load();
+ private static Farm NewModel()=>new(){IsActive=true};
+ private async Task Load()=>farms=await Service.GetAllAsync();
+ private void NewFarm(){model=NewModel();message=error=null;}
+ private void Edit(Farm x)=>model=new Farm{Id=x.Id,Name=x.Name,OwnerName=x.OwnerName,Phone=x.Phone,Notes=x.Notes,IsActive=x.IsActive,RowVersion=x.RowVersion};
+ private async Task Save(){try{await Service.SaveAsync(model);message="تم حفظ المزرعة.";error=null;model=NewModel();await Load();}catch(Exception ex){error=ex.InnerException?.Message??ex.Message;}}
+ private async Task Delete(long id){try{await Service.DeleteAsync(id);await Load();}catch(Exception ex){error=ex.Message;}}
+}
