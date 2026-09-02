@@ -1,0 +1,183 @@
+name: QatFarm Guided Voice 2.2.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - final/voice-guided-2.2.1
+    paths:
+      - 'src/QatFarm.Mobile/**'
+      - 'tests/AccountingChecks/**'
+      - '.github/workflows/build-mobile-guided-2.2.1.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-guided-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Accounting and Arabic parser checks
+        run: |
+          dotnet run --project tests/AccountingChecks/AccountingChecks.csproj -c Release | tee checks.txt
+          grep -q 'ACCOUNTING_CHECKS_OK' checks.txt
+          grep -q 'VOICE_PARSER_CHECKS_OK' checks.txt
+      - name: Guided workflow gates
+        run: |
+          grep -q '<ApplicationDisplayVersion>2.2.1</ApplicationDisplayVersion>' src/QatFarm.Mobile/QatFarm.Mobile.csproj
+          grep -q '<ApplicationVersion>41</ApplicationVersion>' src/QatFarm.Mobile/QatFarm.Mobile.csproj
+          grep -q 'الاسم الرباعي لمدير النظام' src/QatFarm.Mobile/Components/Login.razor
+          grep -q 'GetPrimaryAdministratorNameAsync' src/QatFarm.Mobile/Services/AppSession.cs
+          grep -q 'model.OwnerName = await Session.GetPrimaryAdministratorNameAsync' src/QatFarm.Mobile/Components/Pages/Farms.razor
+          ! grep -q '<label>الموقع</label>' src/QatFarm.Mobile/Components/Pages/Farms.razor
+          ! grep -q '<label>اسم المالك</label>' src/QatFarm.Mobile/Components/Pages/Farms.razor
+          grep -q 'voiceCustomerId' src/QatFarm.Mobile/Components/Pages/InvoiceEdit.razor
+          grep -q 'TryOpenGuidedInvoiceAsync' src/QatFarm.Mobile/Components/VoiceAssistant.razor
+          grep -q 'اختر طريقة الدفع وأكمل' src/QatFarm.Mobile/Components/VoiceAssistant.razor
+          grep -q 'تم تحديد العميل بواسطة المعاون الصوتي' src/QatFarm.Mobile/Components/Pages/InvoiceEdit.razor
+
+  build-android:
+    needs: verify-guided-flow
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install MAUI Android workload
+        shell: pwsh
+        run: |
+          dotnet workload install maui-android
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Ensure Android API 36
+        shell: pwsh
+        run: |
+          $sdkmanager = Join-Path $env:ANDROID_HOME 'cmdline-tools\latest\bin\sdkmanager.bat'
+          if (-not (Test-Path $sdkmanager)) {
+            $candidate = Get-ChildItem (Join-Path $env:ANDROID_HOME 'cmdline-tools') -Recurse -Filter sdkmanager.bat -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidate) { $sdkmanager = $candidate.FullName }
+          }
+          if (-not (Test-Path $sdkmanager)) { throw 'sdkmanager.bat was not found.' }
+          & $sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Download stable signing material
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          curl.exe -L --fail-with-body `
+            -H "Authorization: Bearer $env:GH_TOKEN" `
+            -H "Accept: application/vnd.github+json" `
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9738604683/zip" `
+            -o stable-source.zip
+          Expand-Archive stable-source.zip -DestinationPath stable-source -Force
+          $key = Get-ChildItem stable-source -Recurse -Filter QatFarmMobile.keystore | Select-Object -First 1
+          if (-not $key) { throw 'Stable signing key was not found.' }
+          "KEYSTORE=$($key.FullName)" | Out-File $env:GITHUB_ENV -Append
+      - name: Restore and compile Release
+        shell: pwsh
+        run: |
+          $project = (Resolve-Path 'src/QatFarm.Mobile/QatFarm.Mobile.csproj').Path
+          "PROJECT=$project" | Out-File $env:GITHUB_ENV -Append
+          dotnet workload restore $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $project -f net10.0-android36.0 -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish stable signed APK
+        shell: pwsh
+        env:
+          QATFARM_SIGN_PASS: ${{ secrets.QATFARM_SIGN_PASS }}
+        run: |
+          $signPass = if ([string]::IsNullOrWhiteSpace($env:QATFARM_SIGN_PASS)) { 'QatFarmMobile2026Key' } else { $env:QATFARM_SIGN_PASS }
+          New-Item release -ItemType Directory -Force | Out-Null
+          dotnet publish $env:PROJECT -f net10.0-android36.0 -c Release --no-restore `
+            -p:ApplicationDisplayVersion=2.2.1 `
+            -p:ApplicationVersion=41 `
+            -p:AndroidPackageFormats=apk `
+            -p:AndroidCreatePackagePerAbi=false `
+            -p:AndroidKeyStore=true `
+            -p:AndroidSigningKeyStore="$env:KEYSTORE" `
+            -p:AndroidSigningKeyAlias=qatfarm `
+            -p:AndroidSigningKeyPass="$signPass" `
+            -p:AndroidSigningStorePass="$signPass"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $apk = Get-ChildItem 'src/QatFarm.Mobile' -Recurse -Filter '*-Signed.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $apk) { $apk = Get-ChildItem 'src/QatFarm.Mobile' -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
+          if (-not $apk) { throw 'No APK was produced.' }
+          Copy-Item $apk.FullName 'release/QatFarmMobile-AWAD-SOFT-2.2.1-GUIDED.apk' -Force
+          $hash = Get-FileHash 'release/QatFarmMobile-AWAD-SOFT-2.2.1-GUIDED.apk' -Algorithm SHA256
+          "$($hash.Hash)  QatFarmMobile-AWAD-SOFT-2.2.1-GUIDED.apk" | Set-Content 'release/SHA256.txt' -Encoding utf8
+      - name: Upload Android package
+        uses: actions/upload-artifact@v4
+        with:
+          name: QatFarmMobile-AWAD-SOFT-2.2.1-GUIDED
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  smoke-test-android:
+    needs: build-android
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: QatFarmMobile-AWAD-SOFT-2.2.1-GUIDED
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and verify startup
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install apk/QatFarmMobile-AWAD-SOFT-2.2.1-GUIDED.apk
+            adb logcat -c
+            adb shell monkey -p com.qatfarm.mobile -c android.intent.category.LAUNCHER 1
+            sleep 20
+            adb shell pidof com.qatfarm.mobile | tee app-pid.txt
+            adb logcat -d > logcat.txt
+            adb exec-out screencap -p > app-startup.png
+            test -s app-pid.txt
+            grep -q 'QATFARM_STARTUP_OK' logcat.txt
+            ! grep -q 'QATFARM_STARTUP_ERROR' logcat.txt
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QatFarmMobile-AWAD-SOFT-2.2.1-GUIDED-diagnostics
+          path: |
+            app-startup.png
+            app-pid.txt
+            logcat.txt
+          if-no-files-found: warn
+          retention-days: 14
