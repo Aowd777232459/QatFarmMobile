@@ -2,21 +2,22 @@
 @inject AppSession Session
 @inject NavigationManager Navigation
 
-<div class="reference-shell">
+<div class="reference-shell erp3-shell">
  <div class="sidebar-scrim @(menuOpen ? "show" : "")" @onclick="CloseMenu"></div>
- <aside class="reference-sidebar @(menuOpen ? "open" : "")">
-  <div class="sidebar-brand">
+ <aside class="reference-sidebar erp3-sidebar @(menuOpen ? "open" : "")">
+  <div class="sidebar-brand erp3-brand">
    <img src="images/app_icon.png" alt="" />
    <div><strong>عواد سوفت</strong><small>AWAD SOFT</small></div>
   </div>
   <div class="sidebar-caption">القائمة الرئيسية</div>
-  <nav class="sidebar-nav" @onclick="CloseMenu">
+  <nav class="sidebar-nav erp3-nav" @onclick="CloseMenu">
    <NavLink href="/" Match="NavLinkMatch.All"><span>◉</span>لوحة التحكم</NavLink>
+   <NavLink href="/invoice/new"><span>＋</span>إدخال فاتورة بيع</NavLink>
    <NavLink href="/invoices"><span>▤</span>الفواتير</NavLink>
    <NavLink href="/customers"><span>●</span>العملاء</NavLink>
    <NavLink href="/farms"><span>♣</span>المزارع</NavLink>
    <NavLink href="/cultivation"><span>✦</span>الخسائر</NavLink>
-   <NavLink href="/creditors"><span>▣</span>الديون والدائنون</NavLink>
+   <NavLink href="/creditors"><span>▣</span>الديون والمدفوعات</NavLink>
    @if (Session.IsAdmin)
    {
     <NavLink href="/catalogs"><span>▦</span>الأصناف والقوائم</NavLink>
@@ -30,15 +31,15 @@
    }
    <NavLink href="/settings"><span>⚙</span>الإعدادات والنسخ</NavLink>
   </nav>
-  <div class="sidebar-footer">
+  <div class="sidebar-footer erp3-sidebar-footer">
    <strong>@Session.CurrentUser?.FullName</strong>
    <small>@RoleText()</small>
-   <span>الإصدار 2.2.1</span>
+   <span>الإصدار 3.0.0</span>
   </div>
  </aside>
 
- <section class="reference-workspace">
-  <header class="topbar reference-topbar">
+ <section class="reference-workspace erp3-workspace">
+  <header class="topbar reference-topbar erp3-topbar">
    <button type="button" class="mobile-menu-button" @onclick="ToggleMenu">☰</button>
    <div class="brand-mini reference-title">
     <img src="images/app_icon.png" alt="" />
@@ -47,13 +48,13 @@
    <div class="topbar-user"><span>@DateTime.Now.ToString("dd/MM/yyyy")</span><strong>@Session.CurrentUser?.FullName</strong></div>
    <button class="icon-btn" @onclick="Logout">خروج</button>
   </header>
-  <main class="content reference-content">@Body</main>
+  <main class="content reference-content erp3-content">@Body</main>
  </section>
 
- <nav class="bottom-nav accounting-nav reference-mobile-nav">
+ <nav class="bottom-nav accounting-nav reference-mobile-nav erp3-mobile-nav">
   <NavLink href="/" Match="NavLinkMatch.All"><span class="nav-glyph">⌂</span><small>الرئيسية</small></NavLink>
   <NavLink href="/invoices"><span class="nav-glyph">▤</span><small>الفواتير</small></NavLink>
-  <NavLink class="center-nav-action" href="/invoice/new"><span>＋</span><small>جديد</small></NavLink>
+  <NavLink class="center-nav-action" href="/invoice/new"><span>＋</span><small>بيع</small></NavLink>
   <NavLink href="/customers"><span class="nav-glyph">◎</span><small>العملاء</small></NavLink>
   <NavLink href="/more"><span class="nav-glyph">•••</span><small>المزيد</small></NavLink>
  </nav>
