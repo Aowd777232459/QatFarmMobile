@@ -18,7 +18,6 @@ $patched=[regex]::Replace($db,$pattern,$replacement)
 if($patched -eq $db){throw 'Could not remove the seeded administrator block.'}
 Set-Content $dbinit $patched -Encoding utf8
 
-$patchRoot=Split-Path $PSScriptRoot -Parent
 $sourceFiles=Join-Path $PSScriptRoot 'QatFarm.Web'
 Get-ChildItem $sourceFiles -Recurse -File | ForEach-Object {
     $relative=$_.FullName.Substring($sourceFiles.Length).TrimStart('\')
@@ -26,5 +25,11 @@ Get-ChildItem $sourceFiles -Recurse -File | ForEach-Object {
     New-Item (Split-Path $target -Parent) -ItemType Directory -Force | Out-Null
     Copy-Item $_.FullName $target -Force
 }
+
+$iss=Join-Path $Root 'Installer\QatFarmSystem.iss'
+$issText=Get-Content $iss -Raw
+$issText=$issText.Replace('#define MyAppVersion "2.2.2"','#define MyAppVersion "2.3.0"')
+$issText=$issText.Replace('OutputBaseFilename=QatFarmSystem_Setup_2.2.2_x64','OutputBaseFilename=AWAD-SOFT-QatFarm-Windows-2.3.0-Setup')
+Set-Content $iss $issText -Encoding utf8
 
 Write-Host 'WINDOWS_REFERENCE_PATCH_OK'
