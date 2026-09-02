@@ -1,0 +1,86 @@
+@page "/sales/new"
+@page "/sales/edit/{InvoiceId:long}"
+@attribute [Authorize]
+@inject InvoiceService Service
+@inject LookupService Lookups
+@inject CustomerService Customers
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>@(InvoiceId.HasValue ? "تعديل فاتورة" : "إدخال فاتورة بيع")</PageTitle>
+<div class="ref-invoice-title"><div><h1>إدخال فاتورة بيع</h1><small>AWAD SOFT</small></div><div class="ref-doc">@(InvoiceId.HasValue ? $"فاتورة #{InvoiceId}" : "فاتورة جديدة")</div></div>
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert danger">@error</div> }
+@if (voiceGuided) { <div class="ref-voice-guided">🎙 تم تحديد العميل بالصوت. اختر أنت نوع الدفع وأكمل الأصناف ثم احفظ.</div> }
+
+<EditForm Model="model" OnValidSubmit="Save"><DataAnnotationsValidator /><ValidationSummary class="validation-summary" />
+ <div class="ref-toolbar">
+  <button class="ref-tool save" type="submit" disabled="@saving">💾 حفظ</button>
+  <button class="ref-tool" type="button" @onclick="Reset">＋ جديد</button>
+  @if(InvoiceId.HasValue){<span class="ref-tool edit">✎ تعديل</span>}
+  <a class="ref-tool" href="/invoices">▤ الفواتير</a>
+  <a class="ref-tool" href="/reports">PDF التقارير</a>
+  <a class="ref-tool close" href="/invoices">✕ إغلاق</a>
+ </div>
+
+ <div class="ref-invoice-meta-grid">
+  <section class="ref-box customer-box">
+   <div class="ref-box-title">👤 بيانات العميل</div>
+   <div class="ref-box-body two">
+    <div class="field span2"><label>اسم العميل</label><InputSelect class="form-control" @bind-Value="model.CustomerId" @bind-Value:after="CustomerChanged"><option value="">بيع مباشر</option>@foreach(var x in customers){<option value="@x.Id">@x.Name</option>}</InputSelect></div>
+    <div class="ref-read"><span>الهاتف</span><b>@(SelectedCustomer?.Phone ?? model.BuyerPhone ?? "—")</b></div>
+    <div class="ref-read"><span>الحد الائتماني</span><b>@Money(SelectedCustomer?.CreditLimit ?? 0)</b></div>
+    <div class="ref-read span2"><span>الرصيد الحالي</span><b class="red">@Money(SelectedCustomer?.Outstanding ?? 0)</b></div>
+    @if(!model.CustomerId.HasValue){<div class="field"><label>اسم المشتري</label><InputText class="form-control" @bind-Value="model.BuyerName" /></div><div class="field"><label>هاتف المشتري</label><InputText class="form-control" @bind-Value="model.BuyerPhone" /></div>}
+   </div>
+  </section>
+
+  <section class="ref-box invoice-box">
+   <div class="ref-box-title">▤ بيانات الفاتورة</div>
+   <div class="ref-box-body two">
+    <div class="ref-read"><span>رقم الفاتورة</span><b>@(InvoiceId?.ToString() ?? "تلقائي")</b></div>
+    <div class="field"><label>التاريخ</label><InputDate class="form-control" @bind-Value="model.InvoiceDate" /></div>
+    <div class="field"><label>المزرعة</label><InputSelect class="form-control" @bind-Value="model.FarmId"><option value="0">اختر</option>@foreach(var x in farms){<option value="@x.Id">@x.Name</option>}</InputSelect></div>
+    <div class="field"><label>استحقاق الدين</label><InputDate class="form-control" @bind-Value="model.PaymentDueDate" disabled="@(!model.CustomerId.HasValue)" /></div>
+   </div>
+  </section>
+
+  <section class="ref-box seller-box">
+   <div class="ref-box-title">♟ بيانات البائع</div>
+   <div class="ref-box-body">
+    <div class="ref-read"><span>اسم البائع</span><b>@(actor?.UserName ?? "مدير النظام")</b></div>
+    <div class="ref-read"><span>الصلاحية</span><b>@(actor?.IsAdministrator == true ? "المدير العام" : actor?.IsAccountant == true ? "محاسب" : "موظف")</b></div>
+    <div class="ref-read"><span>الوقت</span><b>@DateTime.Now.ToString("hh:mm tt")</b></div>
+   </div>
+  </section>
+ </div>
+
+ <section class="ref-box ref-items-section">
+  <div class="ref-box-title row"><span>▦ إدخال الأصناف</span><button class="ref-add" type="button" @onclick="AddItem">＋ إضافة صنف</button></div>
+  <div class="table-responsive"><table class="ref-table invoice-items"><thead><tr><th>م</th><th>الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody>
+  @for(var i=0;i<model.Items.Count;i++){var item=model.Items[i];<tr @key="item"><td>@(i+1)</td><td><InputSelect class="form-control" @bind-Value="item.QatTypeId"><option value="0">اختر الصنف</option>@foreach(var x in qatTypes){<option value="@x.Id">@x.Name</option>}</InputSelect></td><td><InputNumber class="form-control" @bind-Value="item.Quantity" /></td><td><InputNumber class="form-control" @bind-Value="item.UnitPrice" /></td><td><b>@Money(item.Total)</b></td><td><button class="danger-action" type="button" disabled="@(model.Items.Count==1)" @onclick="()=>RemoveItem(item)">×</button></td></tr>}
+  </tbody></table></div>
+ </section>
+
+ <div class="ref-lower-grid">
+  <section class="ref-box notes-box"><div class="ref-box-title">ملاحظات ومصروفات</div><div class="ref-box-body"><InputTextArea class="form-control" @bind-Value="model.Notes" placeholder="ملاحظات الفاتورة" /><div class="ref-exp-head"><b>مصروفات البيع</b><button type="button" class="ref-add" @onclick="AddExpense">＋</button></div>@foreach(var ex in model.Expenses){<div class="ref-exp-row"><InputSelect class="form-control" @bind-Value="ex.ExpenseTypeId"><option value="0">نوع المصروف</option>@foreach(var t in expenseTypes){<option value="@t.Id">@t.Name</option>}</InputSelect><InputNumber class="form-control" @bind-Value="ex.Amount" /><button type="button" class="danger-action" @onclick="()=>RemoveExpense(ex)">×</button></div>}</div></section>
+
+  <section class="ref-box payment-type-box"><div class="ref-box-title">نوع الدفع</div><div class="ref-payment-options"><InputRadioGroup @bind-Value="model.PaymentMethod"><label><InputRadio Value="PaymentMethod.Cash" /> نقدي</label><label><InputRadio Value="PaymentMethod.Credit" /> آجل</label><label><InputRadio Value="PaymentMethod.Transfer" /> تحويل</label><label><InputRadio Value="PaymentMethod.Mixed" /> مختلط</label></InputRadioGroup></div><div class="field paid-field"><label>المدفوع</label>@if(model.CustomerId.HasValue){<InputNumber class="form-control" @bind-Value="model.AmountPaid" />}else{<input class="form-control" value="@Gross.ToString("N0")" disabled />}</div></section>
+
+  <section class="ref-box totals-box"><div class="ref-box-title">ملخص الفاتورة</div><div class="ref-total-row"><span>إجمالي قبل الزكاة</span><b>@Money(Gross)</b></div><div class="ref-total-row"><span>الزكاة</span><div class="zakat-inline"><InputNumber class="form-control" @bind-Value="model.ZakatPercent" /><small>% = @Money(Zakat)</small></div></div><div class="ref-total-row green"><span>صافي العملية</span><b>@Money(Net)</b></div><div class="ref-total-row blue"><span>المدفوع</span><b>@Money(EffectivePaid)</b></div><div class="ref-total-row red big"><span>المتبقي على العميل</span><b>@Money(Due)</b></div><div class="ref-total-row"><span>الدين بعد الفاتورة</span><b class="red">@Money((SelectedCustomer?.Outstanding ?? 0)+Due)</b></div></section>
+ </div>
+ <div class="ref-save-bottom"><button class="ref-btn primary" type="submit" disabled="@saving">@(saving?"جارٍ الحفظ...":"حفظ الفاتورة")</button><button class="ref-btn" type="button" @onclick="Reset">جديد</button><a class="ref-btn" href="/invoices">PDF / طباعة</a></div>
+</EditForm>
+
+@code{
+ [Parameter] public long? InvoiceId{get;set;}
+ [SupplyParameterFromQuery(Name="voiceCustomerId")] public long? VoiceCustomerId{get;set;}
+ private InvoiceEditorModel model=new(); private List<LookupItem> farms=[],customers=[],qatTypes=[],expenseTypes=[]; private List<CustomerListRow> customerRows=[]; private CurrentUserInfo? actor; private string? error; private bool saving,voiceGuided;
+ private CustomerListRow? SelectedCustomer=>model.CustomerId.HasValue?customerRows.FirstOrDefault(x=>x.Id==model.CustomerId.Value):null;
+ private decimal Gross=>model.Items.Sum(x=>x.Total); private decimal Zakat=>decimal.Round(Gross*model.ZakatPercent/100m,2,MidpointRounding.AwayFromZero); private decimal Expenses=>model.Expenses.Sum(x=>x.Amount); private decimal Net=>Gross-Zakat-Expenses; private decimal EffectivePaid=>model.CustomerId.HasValue?model.AmountPaid:Gross; private decimal Due=>Math.Max(0,Gross-EffectivePaid);
+ protected override async Task OnInitializedAsync(){farms=await Lookups.FarmsAsync();customers=await Lookups.CustomersAsync();qatTypes=await Lookups.QatTypesAsync();expenseTypes=await Lookups.DailyExpenseTypesAsync();customerRows=await Customers.GetAllAsync();actor=await CurrentUser.GetAsync();if(InvoiceId.HasValue)model=await Service.GetEditorAsync(InvoiceId.Value)??new();else if(VoiceCustomerId.HasValue&&customerRows.Any(x=>x.Id==VoiceCustomerId.Value)){model.CustomerId=VoiceCustomerId;model.AmountPaid=0;model.PaymentMethod=PaymentMethod.Cash;voiceGuided=true;}}
+ private void AddItem()=>model.Items.Add(new()); private void RemoveItem(InvoiceItemEditorModel x){if(model.Items.Count>1)model.Items.Remove(x);} private void AddExpense()=>model.Expenses.Add(new()); private void RemoveExpense(InvoiceExpenseEditorModel x)=>model.Expenses.Remove(x);
+ private void CustomerChanged(){if(model.CustomerId.HasValue){var c=SelectedCustomer;model.BuyerName=c?.Name;model.BuyerPhone=c?.Phone;return;}model.PaymentMethod=PaymentMethod.Cash;model.PaymentDueDate=null;model.AmountPaid=Gross;}
+ private void Reset(){if(InvoiceId.HasValue)Navigation.NavigateTo("/sales/new");else{model=new();error=null;voiceGuided=false;}}
+ private async Task Save(){if(saving)return;try{saving=true;error=null;var id=await Service.SaveAsync(model);Navigation.NavigateTo($"/invoices?invoice={id}");}catch(Exception ex){error=ex.InnerException?.Message??ex.Message;saving=false;}}
+ private static string Money(decimal x)=>$"{x:N0} ر.ي";
+}
