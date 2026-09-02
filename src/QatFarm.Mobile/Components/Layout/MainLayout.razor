@@ -2,31 +2,72 @@
 @inject AppSession Session
 @inject NavigationManager Navigation
 
-<div class="app-shell">
- <div class="awad-watermark" aria-hidden="true"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
- <header class="topbar accounting-topbar">
-  <div class="brand-mini">
+<div class="reference-shell">
+ <div class="sidebar-scrim @(menuOpen ? "show" : "")" @onclick="CloseMenu"></div>
+ <aside class="reference-sidebar @(menuOpen ? "open" : "")">
+  <div class="sidebar-brand">
    <img src="images/app_icon.png" alt="" />
-   <div><strong>نظام زراعي عواد سوفت</strong><small>@Session.CurrentUser?.FullName · @RoleText()</small></div>
+   <div><strong>عواد سوفت</strong><small>AWAD SOFT</small></div>
   </div>
-  <button class="icon-btn" @onclick="Logout">خروج</button>
- </header>
- <main class="content">@Body</main>
- <nav class="bottom-nav accounting-nav">
+  <div class="sidebar-caption">القائمة الرئيسية</div>
+  <nav class="sidebar-nav" @onclick="CloseMenu">
+   <NavLink href="/" Match="NavLinkMatch.All"><span>◉</span>لوحة التحكم</NavLink>
+   <NavLink href="/invoices"><span>▤</span>الفواتير</NavLink>
+   <NavLink href="/customers"><span>●</span>العملاء</NavLink>
+   <NavLink href="/farms"><span>♣</span>المزارع</NavLink>
+   <NavLink href="/cultivation"><span>✦</span>الخسائر</NavLink>
+   <NavLink href="/creditors"><span>▣</span>الديون والدائنون</NavLink>
+   @if (Session.IsAdmin)
+   {
+    <NavLink href="/catalogs"><span>▦</span>الأصناف والقوائم</NavLink>
+   }
+   <NavLink href="/reports"><span>▧</span>التقارير</NavLink>
+   <NavLink href="/zakat"><span>◈</span>الزكاة</NavLink>
+   @if (Session.IsAdmin)
+   {
+    <NavLink href="/users"><span>♟</span>المستخدمون</NavLink>
+    <NavLink href="/audit"><span>⌁</span>سجل التدقيق</NavLink>
+   }
+   <NavLink href="/settings"><span>⚙</span>الإعدادات والنسخ</NavLink>
+  </nav>
+  <div class="sidebar-footer">
+   <strong>@Session.CurrentUser?.FullName</strong>
+   <small>@RoleText()</small>
+   <span>الإصدار 2.2.1</span>
+  </div>
+ </aside>
+
+ <section class="reference-workspace">
+  <header class="topbar reference-topbar">
+   <button type="button" class="mobile-menu-button" @onclick="ToggleMenu">☰</button>
+   <div class="brand-mini reference-title">
+    <img src="images/app_icon.png" alt="" />
+    <div><strong>نظام زراعي عواد سوفت</strong><small>لإدارة المزارع وبيع القات</small></div>
+   </div>
+   <div class="topbar-user"><span>@DateTime.Now.ToString("dd/MM/yyyy")</span><strong>@Session.CurrentUser?.FullName</strong></div>
+   <button class="icon-btn" @onclick="Logout">خروج</button>
+  </header>
+  <main class="content reference-content">@Body</main>
+ </section>
+
+ <nav class="bottom-nav accounting-nav reference-mobile-nav">
   <NavLink href="/" Match="NavLinkMatch.All"><span class="nav-glyph">⌂</span><small>الرئيسية</small></NavLink>
-  <NavLink href="/accounting"><span class="nav-glyph">▥</span><small>المحاسبة</small></NavLink>
-  <NavLink class="center-nav-action" href="/invoice/new"><span>＋</span><small>فاتورة</small></NavLink>
+  <NavLink href="/invoices"><span class="nav-glyph">▤</span><small>الفواتير</small></NavLink>
+  <NavLink class="center-nav-action" href="/invoice/new"><span>＋</span><small>جديد</small></NavLink>
   <NavLink href="/customers"><span class="nav-glyph">◎</span><small>العملاء</small></NavLink>
-  <NavLink href="/more"><span class="nav-glyph">≡</span><small>المزيد</small></NavLink>
+  <NavLink href="/more"><span class="nav-glyph">•••</span><small>المزيد</small></NavLink>
  </nav>
 </div>
 
 @code {
+    private bool menuOpen;
+    private void ToggleMenu() => menuOpen = !menuOpen;
+    private void CloseMenu() => menuOpen = false;
     private void Logout() { Session.Logout(); Navigation.NavigateTo("/"); }
     private string RoleText() => Session.CurrentUser?.Role switch
     {
-        UserRole.Administrator => "مدير",
+        UserRole.Administrator => "المدير العام",
         UserRole.Accountant => "محاسب",
-        _ => "موظف إضافة"
+        _ => "موظف"
     };
 }
