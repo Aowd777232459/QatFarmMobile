@@ -1,0 +1,44 @@
+name: Inspect exact reference UI source
+
+on:
+  push:
+    branches:
+      - exact-reference-ui-2.2.1
+    paths:
+      - '.github/workflows/inspect-exact-reference-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract source and VIP patch
+        run: |
+          rm -rf source
+          mkdir source
+          unzip -q QatFarmMobile_Source_1.2.1_FIXED.zip -d source
+          unzip -q -o QatFarmMobile_VIP_Patch_2.0.0.zip -d source
+          PROJECT=$(find source -name QatFarm.Mobile.csproj | head -1)
+          ROOT=$(dirname "$PROJECT")
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+      - name: Print target UI files
+        run: |
+          echo '=== PROJECT ==='
+          cat "$PROJECT"
+          echo '=== MAINLAYOUT ==='
+          sed -n '1,300p' "$ROOT/Components/Layout/MainLayout.razor"
+          echo '=== INVOICEEDIT PART 1 ==='
+          sed -n '1,360p' "$ROOT/Components/Pages/InvoiceEdit.razor"
+          echo '=== INVOICEEDIT PART 2 ==='
+          sed -n '361,760p' "$ROOT/Components/Pages/InvoiceEdit.razor"
+          echo '=== APP.CSS PART 1 ==='
+          sed -n '1,500p' "$ROOT/wwwroot/css/app.css"
+          echo '=== APP.CSS PART 2 ==='
+          sed -n '501,1100p' "$ROOT/wwwroot/css/app.css"
+          echo '=== WWWROOT ==='
+          find "$ROOT/wwwroot" -maxdepth 2 -type f | sort
