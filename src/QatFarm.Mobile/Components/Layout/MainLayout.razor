@@ -38,19 +38,26 @@
  </aside>
 
  <section class="reference-workspace">
-  <header class="topbar reference-topbar">
+  <header class="topbar reference-topbar @(IsInvoiceEditor() ? "invoice-screen-topbar" : "")">
    <button type="button" class="mobile-menu-button" @onclick="ToggleMenu">☰</button>
    <div class="brand-mini reference-title">
     <img src="images/app_icon.png" alt="" />
-    <div><strong>نظام زراعي عواد سوفت</strong><small>لإدارة المزارع وبيع القات</small></div>
+    <div><strong>@TopTitle()</strong><small>@TopSubtitle()</small></div>
    </div>
    <div class="topbar-user"><span>@DateTime.Now.ToString("dd/MM/yyyy")</span><strong>@Session.CurrentUser?.FullName</strong></div>
-   <button class="icon-btn" @onclick="Logout">خروج</button>
+   @if (IsInvoiceEditor())
+   {
+    <span class="invoice-topbar-slot" aria-hidden="true"></span>
+   }
+   else
+   {
+    <button class="icon-btn" @onclick="Logout">خروج</button>
+   }
   </header>
   <main class="content reference-content">@Body</main>
  </section>
 
- <nav class="bottom-nav accounting-nav reference-mobile-nav">
+ <nav class="bottom-nav accounting-nav reference-mobile-nav @(IsInvoiceEditor() ? "invoice-route-hidden" : "")">
   <NavLink href="/" Match="NavLinkMatch.All"><span class="nav-glyph">⌂</span><small>الرئيسية</small></NavLink>
   <NavLink href="/invoices"><span class="nav-glyph">▤</span><small>الفواتير</small></NavLink>
   <NavLink class="center-nav-action" href="/invoice/new"><span>＋</span><small>جديد</small></NavLink>
@@ -64,6 +71,14 @@
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
     private void Logout() { Session.Logout(); Navigation.NavigateTo("/"); }
+    private bool IsInvoiceEditor()
+    {
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+        return path.StartsWith("invoice/new", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("invoice/", StringComparison.OrdinalIgnoreCase);
+    }
+    private string TopTitle() => IsInvoiceEditor() ? "إدخال فاتورة بيع" : "نظام زراعي عواد سوفت";
+    private string TopSubtitle() => IsInvoiceEditor() ? "" : "لإدارة المزارع وبيع القات";
     private string RoleText() => Session.CurrentUser?.Role switch
     {
         UserRole.Administrator => "المدير العام",
