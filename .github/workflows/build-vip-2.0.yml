@@ -1,0 +1,207 @@
+name: QatFarm VIP Accounting 2.0 Android APK
+
+on:
+  push:
+    branches:
+      - feature/vip-accounting-2.0
+    paths-ignore:
+      - '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
+      - '.github/workflows/build-windows-vip.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-android:
+    if: "${{ !startsWith(github.event.head_commit.message, 'test: smoke-only') }}"
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract VIP source
+        shell: pwsh
+        run: |
+          $baseZip = "QatFarmMobile_Source_1.2.1_FIXED.zip"
+          $vipPatch = "QatFarmMobile_VIP_Patch_2.0.0.zip"
+          if (-not (Test-Path $baseZip)) { throw "$baseZip was not found." }
+          if (-not (Test-Path $vipPatch)) { throw "$vipPatch was not found." }
+          Expand-Archive -Path $baseZip -DestinationPath source -Force
+          Expand-Archive -Path $vipPatch -DestinationPath source -Force
+          $project = Get-ChildItem source -Recurse -Filter QatFarm.Mobile.csproj | Select-Object -First 1
+          if (-not $project) { throw "QatFarm.Mobile.csproj was not found." }
+          "PROJECT=$($project.FullName)" | Out-File $env:GITHUB_ENV -Append
+          "PROJECT_DIR=$($project.Directory.FullName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Verify VIP source integrity
+        shell: pwsh
+        run: |
+          $projectText = Get-Content $env:PROJECT -Raw
+          if ($projectText -notmatch '<ApplicationDisplayVersion>2\.0\.0</ApplicationDisplayVersion>') { throw "Wrong app version." }
+          if ($projectText -notmatch '<ApplicationVersion>20</ApplicationVersion>') { throw "Wrong version code." }
+          $root = Split-Path $env:PROJECT -Parent
+          $required = @(
+            'Components\Pages\Accounting.razor',
+            'Components\Pages\Catalogs.razor',
+            'Services\QatFarmService.cs',
+            'Services\MobilePdfService.cs'
+          )
+          foreach ($relative in $required) {
+            if (-not (Test-Path (Join-Path $root $relative))) { throw "Missing $relative" }
+          }
+
+      - name: Install MAUI Android workload
+        shell: pwsh
+        run: dotnet workload install maui-android
+
+      - name: Ensure Android API 36
+        shell: pwsh
+        run: |
+          $sdkmanager = Join-Path $env:ANDROID_HOME "cmdline-tools\latest\bin\sdkmanager.bat"
+          if (-not (Test-Path $sdkmanager)) {
+            $sdkmanager = (Get-ChildItem (Join-Path $env:ANDROID_HOME "cmdline-tools") -Recurse -Filter sdkmanager.bat | Select-Object -First 1).FullName
+          }
+          & $sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore and compile
+        shell: pwsh
+        run: |
+          dotnet workload restore $env:PROJECT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore $env:PROJECT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $env:PROJECT -f net10.0-android36.0 -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Create disposable test signing key
+        shell: pwsh
+        run: |
+          $keyStore = Join-Path $env:RUNNER_TEMP "qatfarm-vip-test.keystore"
+          & keytool -genkeypair -v `
+            -keystore $keyStore `
+            -storepass android `
+            -alias qatfarm-test `
+            -keypass android `
+            -keyalg RSA `
+            -keysize 2048 `
+            -validity 10000 `
+            -dname "CN=QatFarm VIP Test, OU=AWAD SOFT, O=AWAD SOFT, L=Sanaa, C=YE"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "TEST_KEYSTORE=$keyStore" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Build installable universal release APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          dotnet publish $env:PROJECT -f net10.0-android36.0 -c Release --no-restore `
+            -p:AndroidPackageFormats=apk `
+            -p:AndroidCreatePackagePerAbi=false `
+            -p:AndroidKeyStore=true `
+            -p:AndroidSigningKeyStore="$env:TEST_KEYSTORE" `
+            -p:AndroidSigningKeyAlias=qatfarm-test `
+            -p:AndroidSigningKeyPass=android `
+            -p:AndroidSigningStorePass=android
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $apk = Get-ChildItem $env:PROJECT_DIR -Recurse -Filter '*-Signed.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $apk) { $apk = Get-ChildItem $env:PROJECT_DIR -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
+          if (-not $apk) { throw "No APK was produced." }
+          Copy-Item $apk.FullName release/QatFarmMobile-VIP-2.0.0-Install.apk -Force
+
+      - name: Create hashes
+        shell: pwsh
+        run: |
+          $apk = Get-Item release/QatFarmMobile-VIP-2.0.0-Install.apk
+          $hash = Get-FileHash $apk.FullName -Algorithm SHA256
+          "$($hash.Hash)  $($apk.Name)" | Set-Content release/SHA256.txt -Encoding utf8
+
+      - name: Upload VIP release
+        uses: actions/upload-artifact@v4
+        with:
+          name: QatFarmMobile-2.0.0-VIP-Install-APK
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  smoke-test-android:
+    needs: build-android
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Download installable APK
+        if: ${{ needs.build-android.result == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: QatFarmMobile-2.0.0-VIP-Install-APK
+          path: apk
+
+      - name: Reuse latest Release APK
+        if: ${{ needs.build-android.result == 'skipped' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p apk
+          curl -L --fail-with-body \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9505388205/zip" \
+            -o release-artifact.zip
+          unzip release-artifact.zip -d apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install and verify startup
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r apk/QatFarmMobile-VIP-2.0.0-Install.apk
+            adb logcat -c
+            adb shell monkey -p com.qatfarm.mobile -c android.intent.category.LAUNCHER 1
+            sleep 20
+            adb shell pidof com.qatfarm.mobile | tee app-pid.txt
+            adb logcat -d > logcat.txt
+            adb exec-out screencap -p > app-startup.png
+            test -s app-pid.txt
+            grep -q 'QATFARM_STARTUP_OK' logcat.txt
+            ! grep -q 'QATFARM_STARTUP_ERROR' logcat.txt
+
+      - name: Upload startup diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QatFarmMobile-2.0.0-startup-diagnostics
+          path: |
+            app-startup.png
+            app-pid.txt
+            logcat.txt
+          if-no-files-found: warn
+          retention-days: 14

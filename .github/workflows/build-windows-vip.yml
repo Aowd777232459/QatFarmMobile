@@ -1,0 +1,98 @@
+name: AWAD SOFT Windows VIP Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/vip-accounting-2.0
+    paths:
+      - '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
+      - '.github/workflows/build-windows-vip.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract Windows VIP source
+        shell: pwsh
+        run: |
+          $archive = '.github/QatFarmSystem_Windows_VIP_2.2.0.zip'
+          if (-not (Test-Path $archive)) { throw "Missing $archive" }
+          Expand-Archive -Path $archive -DestinationPath windows-source -Force
+          $builder = Get-ChildItem windows-source -Recurse -Filter Build-Installer.ps1 | Select-Object -First 1
+          if (-not $builder) { throw 'Build-Installer.ps1 was not found.' }
+          $windowsRoot = $builder.Directory.Parent.FullName
+          $patchRoot = Join-Path (Get-Location) '.github\windows-vip-2.2.2'
+          $patchFiles = @(
+            'QatFarm.Web\Data\DatabaseSchemaUpdater.cs',
+            'QatFarm.Web\database\Upgrade_Accounting_2_1.sql',
+            'Testing\Product-Readiness-QA.ps1',
+            'QatFarm.Web\QatFarm.Web.csproj',
+            'Installer\QatFarmSystem.iss'
+          )
+          foreach ($relative in $patchFiles) {
+            $source = Join-Path $patchRoot $relative
+            $target = Join-Path $windowsRoot $relative
+            if (-not (Test-Path $source)) { throw "Missing Windows patch file: $relative" }
+            Copy-Item $source $target -Force
+          }
+          "WINDOWS_ROOT=$windowsRoot" | Out-File $env:GITHUB_ENV -Append
+          "WINDOWS_BUILDER=$($builder.FullName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build and verify installer
+        shell: pwsh
+        run: |
+          & $env:WINDOWS_BUILDER -SkipToolInstall -NoExplorer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Smoke install without SQL download
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'Windows Setup.exe was not produced.' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'AWAD-SOFT-QatFarm'
+          $process = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOSQL',"/DIR=$installDir" -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)." }
+          $app = Join-Path $installDir 'QatFarm.Web.exe'
+          if (-not (Test-Path $app)) { throw 'Installed application executable is missing.' }
+
+          $env:DesktopMode__AutoOpenBrowser = 'false'
+          $running = Start-Process $app -WorkingDirectory $installDir -PassThru
+          Start-Sleep -Seconds 12
+          if ($running.HasExited) { throw "Installed app exited early with $($running.ExitCode)." }
+          Stop-Process -Id $running.Id -Force
+
+      - name: Collect release package
+        shell: pwsh
+        run: |
+          New-Item release -ItemType Directory -Force | Out-Null
+          $setup = Get-ChildItem "$env:WINDOWS_ROOT\Release\installer" -Filter '*.exe' | Select-Object -First 1
+          Copy-Item $setup.FullName 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe' -Force
+          Copy-Item "$env:WINDOWS_ROOT\Release\RELEASE_INFO.txt" 'release/RELEASE_INFO.txt' -Force
+          $hash = Get-FileHash 'release/AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe' -Algorithm SHA256
+          "$($hash.Hash)  AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup.exe" | Set-Content release/SHA256.txt -Encoding utf8
+
+      - name: Upload ready Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: AWAD-SOFT-QatFarm-Windows-VIP-2.2.2-Setup
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
