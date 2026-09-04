@@ -2,6 +2,8 @@ name: Inspect current QatFarm source
 
 on:
   push:
+    branches:
+      - main
     paths:
       - '.github/workflows/inspect-current-source.yml'
 
@@ -13,20 +15,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Extract source
+        with:
+          fetch-depth: 0
+      - name: Extract buildable VIP source
         run: |
           rm -rf inspect-src
           mkdir inspect-src
-          unzip -q QatFarmMobile_Source.zip -d inspect-src
-      - name: Show project tree and UI source
+          unzip -q QatFarmMobile_Source_1.2.1_FIXED.zip -d inspect-src
+          git show feature/vip-accounting-2.0:QatFarmMobile_VIP_Patch_2.0.0.zip > /tmp/vip.zip
+          unzip -q -o /tmp/vip.zip -d inspect-src
+          PROJECT=$(find inspect-src -name QatFarm.Mobile.csproj | head -1)
+          ROOT=$(dirname "$PROJECT")
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+      - name: Show exact UI source
         run: |
-          echo '=== FILE TREE ==='
-          find inspect-src -type f | sort | sed -n '1,240p'
-          echo '=== CSPROJ ==='
-          find inspect-src -name 'QatFarm.Mobile.csproj' -print -exec sed -n '1,220p' {} \;
-          echo '=== RAZOR FILES ==='
-          find inspect-src -iname '*.razor' -print | sort
-          echo '=== CSS FILES ==='
-          find inspect-src -iname '*.css' -print | sort
-          echo '=== INVOICE MATCHES ==='
-          grep -RIn --include='*.razor' --include='*.css' --include='*.cs' -E 'erp-invoice|إدخال فاتورة|Invoice|فاتورة بيع|reference-shell' inspect-src | head -300 || true
+          echo '=== PROJECT ==='
+          cat "$PROJECT"
+          echo '=== MAINLAYOUT ==='
+          sed -n '1,360p' "$ROOT/Components/Layout/MainLayout.razor"
+          echo '=== INVOICEEDIT 1 ==='
+          sed -n '1,420p' "$ROOT/Components/Pages/InvoiceEdit.razor"
+          echo '=== INVOICEEDIT 2 ==='
+          sed -n '421,900p' "$ROOT/Components/Pages/InvoiceEdit.razor"
+          echo '=== APP CSS 1 ==='
+          sed -n '1,650p' "$ROOT/wwwroot/css/app.css"
+          echo '=== APP CSS 2 ==='
+          sed -n '651,1400p' "$ROOT/wwwroot/css/app.css"
+          echo '=== SERVICE METHODS ==='
+          grep -RIn --include='*.cs' --include='*.razor' -E 'Save|Print|Pdf|PDF|NewInvoice|CreateInvoice|DeleteInvoice|UpdateInvoice' "$ROOT" | head -400 || true
