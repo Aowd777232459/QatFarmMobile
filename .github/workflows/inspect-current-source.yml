@@ -22,7 +22,7 @@ jobs:
           rm -rf inspect-src
           mkdir inspect-src
           unzip -q QatFarmMobile_Source_1.2.1_FIXED.zip -d inspect-src
-          git show feature/vip-accounting-2.0:QatFarmMobile_VIP_Patch_2.0.0.zip > /tmp/vip.zip
+          git show refs/remotes/origin/feature/vip-accounting-2.0:QatFarmMobile_VIP_Patch_2.0.0.zip > /tmp/vip.zip
           unzip -q -o /tmp/vip.zip -d inspect-src
           PROJECT=$(find inspect-src -name QatFarm.Mobile.csproj | head -1)
           ROOT=$(dirname "$PROJECT")
