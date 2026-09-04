@@ -1,0 +1,32 @@
+name: Inspect current QatFarm source
+
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-current-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract source
+        run: |
+          rm -rf inspect-src
+          mkdir inspect-src
+          unzip -q QatFarmMobile_Source.zip -d inspect-src
+      - name: Show project tree and UI source
+        run: |
+          echo '=== FILE TREE ==='
+          find inspect-src -type f | sort | sed -n '1,240p'
+          echo '=== CSPROJ ==='
+          find inspect-src -name 'QatFarm.Mobile.csproj' -print -exec sed -n '1,220p' {} \;
+          echo '=== RAZOR FILES ==='
+          find inspect-src -iname '*.razor' -print | sort
+          echo '=== CSS FILES ==='
+          find inspect-src -iname '*.css' -print | sort
+          echo '=== INVOICE MATCHES ==='
+          grep -RIn --include='*.razor' --include='*.css' --include='*.cs' -E 'erp-invoice|إدخال فاتورة|Invoice|فاتورة بيع|reference-shell' inspect-src | head -300 || true
