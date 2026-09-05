@@ -2,59 +2,60 @@
 @inject QatFarmService Service
 @inject AppSession Session
 
-<div class="page-head accounting-page-head">
- <div><h1>لوحة التحكم</h1></div>
- <a class="btn primary compact" href="/accounting">المركز المالي</a>
-</div>
-
-<section class="home-qat-hero">
- <img src="images/qat_vip_hero.jpg" alt="مزرعة قات ومنتج زراعي" />
- <div class="home-qat-shade"></div>
- <div class="home-qat-copy"><span>AWAD SOFT</span><h2>نظام زراعي عواد سوفت</h2></div>
- <div class="home-qat-watermark"><strong>AWAD SOFT</strong><small>عواد سوفت</small></div>
-</section>
-
-@if (!string.IsNullOrWhiteSpace(error))
-{
- <div class="alert danger">@error</div>
- <button class="btn primary" @onclick="LoadAsync" disabled="@loading">إعادة المحاولة</button>
-}
-
-@if (summary is null)
-{
- <div class="loading">جارٍ التحميل...</div>
-}
-else
-{
- <div class="stat-grid accounting-stats">
-  <div class="stat-card"><span>مبيعات اليوم</span><strong>@Money(summary.SalesToday)</strong></div>
-  <div class="stat-card"><span>مبيعات السنة</span><strong>@Money(summary.SalesYear)</strong></div>
-  <div class="stat-card success"><span>صافي السنة</span><strong>@Money(summary.NetYear)</strong></div>
-  <div class="stat-card warning"><span>ديون العملاء</span><strong>@Money(summary.CustomerDebts)</strong></div>
-  <div class="stat-card danger"><span>ديون التربية</span><strong>@Money(summary.CultivationDebts)</strong></div>
-  <div class="stat-card zakat"><span>الزكاة المعلقة</span><strong>@Money(summary.PendingZakat)</strong></div>
+<div class="premium-page premium-home">
+ <div class="premium-page-title">
+  <div><span class="eyebrow">AWAD SOFT</span><h1>لوحة التحكم</h1><small>إدارة المزارع والمبيعات بكل سهولة</small></div>
+  <a class="premium-icon-link" href="/accounting" aria-label="المركز المالي">◫</a>
  </div>
- @if (summary.OverdueDebtCount > 0)
- {
-  <div class="alert danger">ديون متأخرة: @summary.OverdueDebtCount</div>
- }
-}
 
-<h2 class="section-title">العمليات</h2>
-<div class="quick-grid accounting-actions">
- <a class="quick-card" href="/invoice/new"><span class="quick-icon">＋</span><b>فاتورة</b></a>
- <a class="quick-card" href="/invoices"><span class="quick-icon">▤</span><b>الفواتير</b></a>
- <a class="quick-card" href="/cultivation"><span class="quick-icon">▦</span><b>التربية</b></a>
- <a class="quick-card vip" href="/accounting"><span class="quick-icon">◫</span><b>المحاسبة</b></a>
- <a class="quick-card" href="/reports"><span class="quick-icon">▥</span><b>التقارير</b></a>
- <a class="quick-card" href="/farms"><span class="quick-icon">⌂</span><b>المزارع</b></a>
+ <section class="premium-hero home-premium-hero">
+  <img src="images/qat_vip_hero.jpg" alt="مزرعة ومنتج زراعي" />
+  <div class="premium-hero-shade"></div>
+  <div class="premium-hero-copy"><span>AWAD SOFT</span><h2>نظام زراعي عواد سوفت</h2><p>من المزرعة إلى السوق .. إدارة أذكى لمستقبل أفضل</p></div>
+  <div class="premium-hero-pill">🌿 زراعة مستدامة</div>
+ </section>
+
+ @if (!string.IsNullOrWhiteSpace(error))
+ {
+  <div class="alert danger">@error</div>
+  <button class="btn primary" @onclick="LoadAsync" disabled="@loading">إعادة المحاولة</button>
+ }
+
+ @if (summary is null)
+ {
+  <div class="loading">جارٍ التحميل...</div>
+ }
+ else
+ {
+  <div class="premium-kpi-grid home-kpis">
+   <a class="premium-kpi blue" href="/invoices"><i>▥</i><div><span>مبيعات اليوم</span><strong>@Money(summary.SalesToday)</strong><small>إجمالي مبيعات اليوم</small></div></a>
+   <a class="premium-kpi green" href="/reports"><i>▤</i><div><span>مبيعات السنة</span><strong>@Money(summary.SalesYear)</strong><small>إجمالي المبيعات خلال السنة</small></div></a>
+   <a class="premium-kpi mint" href="/accounting"><i>◉</i><div><span>صافي السنة</span><strong>@Money(summary.NetYear)</strong><small>صافي الأرباح بعد التكاليف</small></div></a>
+   <a class="premium-kpi gold" href="/customers"><i>👥</i><div><span>ديون العملاء</span><strong>@Money(summary.CustomerDebts)</strong><small>مبالغ مستحقة من العملاء</small></div></a>
+   <a class="premium-kpi red" href="/cultivation"><i>▦</i><div><span>ديون التربية</span><strong>@Money(summary.CultivationDebts)</strong><small>مستحقات التربية</small></div></a>
+   <a class="premium-kpi purple" href="/zakat"><i>◈</i><div><span>الزكاة المعلقة</span><strong>@Money(summary.PendingZakat)</strong><small>المبالغ المستحقة للزكاة</small></div></a>
+  </div>
+  @if (summary.OverdueDebtCount > 0)
+  {
+   <div class="alert danger">ديون متأخرة: @summary.OverdueDebtCount</div>
+  }
+ }
+
+ <div class="premium-section-head"><h2>العمليات</h2><a href="/more">عرض الكل ←</a></div>
+ <div class="premium-action-grid">
+  <a href="/farms"><i>🌱</i><b>المزارع</b><small>إدارة المزارع</small></a>
+  <a href="/invoice/new"><i>＋</i><b>مبيعات جديدة</b><small>تسجيل فاتورة</small></a>
+  <a href="/customers"><i>👥</i><b>العملاء</b><small>الحسابات والديون</small></a>
+  <a href="/cultivation"><i>▦</i><b>التربية</b><small>الخسائر والالتزامات</small></a>
+  <a href="/accounting"><i>◫</i><b>المحاسبة</b><small>التحليل المالي</small></a>
+  <a href="/reports"><i>▥</i><b>التقارير</b><small>تقارير مفصلة</small></a>
+ </div>
 </div>
 
 @code {
  private DashboardSummary? summary;
  private string? error;
  private bool loading;
-
  protected override Task OnInitializedAsync() => LoadAsync();
  private async Task LoadAsync()
  {
