@@ -2,57 +2,58 @@
 @inject QatFarmService Service
 @inject AppSession Session
 
-<div class="page-head"><h1>المزارع</h1></div>
-<div class="panel">
- <h2>@(model.Id == 0 ? "إضافة مزرعة" : "تعديل المزرعة")</h2>
- <EditForm Model="model" OnValidSubmit="SaveAsync">
-  <div class="form-grid">
-   <div><label>اسم المزرعة</label><InputText class="form-control" @bind-Value="model.Name" /></div>
-   <div><label>الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div>
-  </div>
-  <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
-  <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" @onclick="Reset">جديد</button></div>
- </EditForm>
- @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
-</div>
-<div class="card-list">
-@foreach (var farm in farms)
-{
- <div class="data-card farm-card">
-  <div class="grow"><strong>@farm.Name</strong><small>المالك: @farm.OwnerName@(string.IsNullOrWhiteSpace(farm.Phone) ? "" : $" — {farm.Phone}")</small></div>
-  @if (Session.IsAdmin)
-  {
-   <div class="actions">
-    <button class="btn small" @onclick="() => Edit(farm)">تعديل</button>
-    <button class="btn small danger" @onclick="() => DeleteAsync(farm.Id)">حذف</button>
-   </div>
-  }
-  else
-  {
-   <div class="actions"><button class="btn small locked-btn" disabled>🔒 التعديل للمدير</button><button class="btn small locked-btn" disabled>🔒 الحذف للمدير</button></div>
-  }
+<div class="premium-page premium-farms">
+ <div class="premium-page-title"><div><span class="eyebrow">AWAD SOFT</span><h1>المزارع</h1><small>إدارة المزارع ومتابعة بياناتها</small></div><button class="premium-icon-link" @onclick="StartNew">＋</button></div>
+
+ <section class="premium-mini-hero farms-hero"><div><span>مزارعنا .. ثروة المستقبل</span><h2>إدارة أفضل لمستقبل أكثر خضرة</h2><p>كل مزرعة وبياناتها في مكان واحد</p></div><i>🌿</i></section>
+
+ <div class="premium-summary-3">
+  <div><i>🌱</i><span>عدد المزارع</span><strong>@farms.Count</strong></div>
+  <div><i>●</i><span>المزارع النشطة</span><strong>@farms.Count(x => x.IsActive)</strong></div>
+  <div><i>○</i><span>غير النشطة</span><strong>@farms.Count(x => !x.IsActive)</strong></div>
  </div>
-}
+
+ <div class="premium-search-row"><div class="premium-search"><span>⌕</span><input @bind="search" placeholder="البحث في المزارع..." /></div><button class="premium-filter-button" @onclick="ToggleEditor">@(showEditor ? "إغلاق" : "إضافة")</button></div>
+
+ @if (showEditor)
+ {
+  <div class="premium-form-card">
+   <div class="premium-card-head"><div><h2>@(model.Id == 0 ? "إضافة مزرعة" : "تعديل المزرعة")</h2><small>أدخل البيانات الأساسية للمزرعة</small></div><i>🌱</i></div>
+   <EditForm Model="model" OnValidSubmit="SaveAsync">
+    <div class="premium-form-grid"><div><label>اسم المزرعة</label><InputText class="form-control" @bind-Value="model.Name" /></div><div><label>الهاتف</label><InputText class="form-control" @bind-Value="model.Phone" /></div></div>
+    <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
+    <div class="premium-form-actions"><button class="btn primary" type="submit">حفظ المزرعة</button><button class="btn ghost" type="button" @onclick="Reset">جديد</button></div>
+   </EditForm>
+   @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
+  </div>
+ }
+
+ <div class="premium-list farm-premium-list">
+ @foreach (var farm in FilteredFarms)
+ {
+  <article class="premium-farm-card">
+   <div class="farm-card-badge">🌿</div>
+   <div class="farm-card-main"><div class="farm-title-row"><strong>@farm.Name</strong><span class="status-pill @(farm.IsActive?"on":"off")">@(farm.IsActive?"نشطة":"غير نشطة")</span></div><small>المالك: @farm.OwnerName</small><small>☎ @(string.IsNullOrWhiteSpace(farm.Phone) ? "بدون رقم" : farm.Phone)</small>@if(!string.IsNullOrWhiteSpace(farm.Notes)){<p>@farm.Notes</p>}</div>
+   <div class="farm-card-actions"><a class="btn small success" href="/invoice/new">مبيعات</a>@if(Session.IsAdmin){<button class="btn small" @onclick="() => Edit(farm)">تعديل</button><button class="btn small danger" @onclick="() => DeleteAsync(farm.Id)">حذف</button>}</div>
+  </article>
+ }
+ </div>
 </div>
+
 @code {
  private List<Farm> farms = [];
  private Farm model = new();
  private string? message;
  private bool ok;
+ private bool showEditor;
+ private string search="";
+ private IEnumerable<Farm> FilteredFarms => farms.Where(x => string.IsNullOrWhiteSpace(search) || x.Name.Contains(search,StringComparison.OrdinalIgnoreCase) || (x.Phone?.Contains(search,StringComparison.OrdinalIgnoreCase) ?? false));
  protected override async Task OnInitializedAsync() => await LoadAsync();
  private async Task LoadAsync() => farms = await Service.GetFarmsAsync();
- private async Task SaveAsync()
- {
-  try
-  {
-   model.OwnerName = await Session.GetPrimaryAdministratorNameAsync();
-   model.Location = string.Empty;
-   await Service.SaveFarmAsync(model);
-   ok=true; message="تم الحفظ."; Reset(); await LoadAsync();
-  }
-  catch(Exception ex){ok=false;message=ex.Message;}
- }
- private void Edit(Farm x) => model = new Farm { Id=x.Id,Name=x.Name,OwnerName=x.OwnerName,Phone=x.Phone,Location=string.Empty,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt };
+ private async Task SaveAsync(){try{model.OwnerName = await Session.GetPrimaryAdministratorNameAsync();model.Location = string.Empty;await Service.SaveFarmAsync(model);ok=true;message="تم الحفظ.";Reset();showEditor=false;await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private void Edit(Farm x){model = new Farm { Id=x.Id,Name=x.Name,OwnerName=x.OwnerName,Phone=x.Phone,Location=string.Empty,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt };showEditor=true;}
  private void Reset() => model = new Farm();
+ private void StartNew(){Reset();showEditor=true;}
+ private void ToggleEditor()=>showEditor=!showEditor;
  private async Task DeleteAsync(long id){try{await Service.DeleteFarmAsync(id);await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
 }
