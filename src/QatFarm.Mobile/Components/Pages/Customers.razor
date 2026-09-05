@@ -2,83 +2,90 @@
 @inject QatFarmService Service
 @inject AppSession Session
 
-<h1>العملاء والديون</h1>
-<div class="panel">
- <EditForm Model="model" OnValidSubmit="SaveAsync">
-  <div class="form-grid">
-   <div><label>اسم العميل</label><InputText class="form-control" @bind-Value="model.Name" /></div>
-   <div><label>رقم العميل</label><InputText class="form-control" @bind-Value="model.Phone" placeholder="مثال: 777123456" /></div>
-   <div><label>رقم البائع المرتبط</label><InputText class="form-control" @bind-Value="model.SellerPhone" placeholder="رقم البائع للتواصل" /></div>
-   <div><label>المنطقة</label><InputText class="form-control" @bind-Value="model.Region" /></div>
-   <div><label>الرصيد الافتتاحي</label><InputNumber class="form-control" @bind-Value="model.OpeningBalance" /></div>
-   <div><label>الحد الائتماني</label><InputNumber class="form-control" @bind-Value="model.CreditLimit" /></div>
-  </div>
-  <div class="inline-warning">الحد الافتراضي للعميل الجديد 100,000 ر.ي. يمكنك تغييره لأي مبلغ. عند محاولة تجاوز الحد يوقف النظام الزيادة ويرسل تنبيه SMS إلى رقم العميل من شريحة الهاتف.</div>
-  <label class="checkbox-line"><InputCheckbox @bind-Value="model.DebtAlertEnabled" /> تفعيل رسالة SMS عند بلوغ/تجاوز الحد</label>
-  <label>العنوان</label><InputText class="form-control" @bind-Value="model.Address" />
-  <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
-  <div class="actions"><button class="btn primary">حفظ</button><button type="button" class="btn ghost" @onclick="Reset">جديد</button></div>
- </EditForm>
- @if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
-</div>
+<div class="premium-page premium-customers">
+ <div class="premium-page-title"><div><span class="eyebrow">AWAD SOFT</span><h1>العملاء</h1><small>إدارة الحسابات والديون والحدود الائتمانية</small></div><button class="premium-icon-link" @onclick="StartNew">＋</button></div>
 
-<div class="card-list">
-@foreach (var row in rows)
-{
- var available = Math.Max(0, row.Customer.CreditLimit - row.Balance);
- var limitReached = row.Balance >= row.Customer.CreditLimit && row.Balance > 0;
- <div class="data-card @(limitReached ? "credit-limit-reached" : "")">
-  <div class="grow">
-   <strong>@row.Customer.Name</strong>
-   <small>العميل: @(row.Customer.Phone ?? "بدون رقم") — البائع: @(row.Customer.SellerPhone ?? "غير محدد") — @row.Customer.Region</small>
-   <div class="money-line"><span>الدين: <b>@row.Balance.ToString("N2")</b></span><span>الحد: <b>@row.Customer.CreditLimit.ToString("N2")</b></span><span>المتاح: <b>@available.ToString("N2")</b></span></div>
-   @if (limitReached)
-   { <div class="alert danger">⚠ بلغ العميل الحد الائتماني. لا يُسمح بزيادة الدين.</div> }
-   else if (row.Customer.CreditLimit > 0 && row.Balance >= row.Customer.CreditLimit * 0.8m)
-   { <div class="inline-warning">تنبيه: العميل استخدم أكثر من 80% من الحد الائتماني.</div> }
-  </div>
-  <div class="actions vertical">
-   @if (Session.CanRecordPayments && row.Balance > 0)
-   { <button class="btn small success" @onclick="() => StartPayment(row)">دفعة</button> }
-   @if (Session.IsAdmin)
-   {
-    <button class="btn small" @onclick="() => Edit(row.Customer)">تعديل</button>
-    <button class="btn small danger" @onclick="() => DeleteAsync(row.Customer.Id)">حذف</button>
-   }
-   else
-   {
-    <button class="btn small locked-btn" disabled>🔒 تعديل المدير</button>
-    <button class="btn small locked-btn" disabled>🔒 حذف المدير</button>
-   }
-  </div>
+ <section class="premium-mini-hero customers-hero"><div><span>علاقات أقوى</span><h2>عملاؤك في مكان واحد</h2><p>تابع الأرصدة والديون والحدود الائتمانية بسهولة</p></div><i>👥</i></section>
+
+ <div class="premium-summary-3">
+  <div><i>👥</i><span>إجمالي العملاء</span><strong>@rows.Count</strong></div>
+  <div><i>◉</i><span>ديون العملاء</span><strong>@Money(rows.Sum(x => x.Balance))</strong></div>
+  <div><i>●</i><span>العملاء النشطون</span><strong>@rows.Count(x => x.Customer.IsActive)</strong></div>
  </div>
-}
+
+ <div class="premium-search-row">
+  <div class="premium-search"><span>⌕</span><input @bind="search" placeholder="ابحث بالاسم أو رقم الجوال..." /></div>
+  <button class="premium-filter-button" @onclick="ToggleEditor">@(showEditor ? "إغلاق" : "إضافة")</button>
+ </div>
+ <div class="premium-chips">
+  <button class="@(filter=="all"?"active":"")" @onclick='() => filter="all"'>الكل</button>
+  <button class="@(filter=="debt"?"active":"")" @onclick='() => filter="debt"'>عليه دين</button>
+  <button class="@(filter=="active"?"active":"")" @onclick='() => filter="active"'>نشط</button>
+  <button class="@(filter=="inactive"?"active":"")" @onclick='() => filter="inactive"'>غير نشط</button>
+ </div>
+
+ @if (showEditor)
+ {
+  <div class="premium-form-card">
+   <div class="premium-card-head"><div><h2>@(model.Id == 0 ? "إضافة عميل" : "تعديل العميل")</h2><small>البيانات الأساسية والائتمانية</small></div><i>👤</i></div>
+   <EditForm Model="model" OnValidSubmit="SaveAsync">
+    <div class="premium-form-grid">
+     <div><label>اسم العميل</label><InputText class="form-control" @bind-Value="model.Name" /></div>
+     <div><label>رقم العميل</label><InputText class="form-control" @bind-Value="model.Phone" placeholder="777123456" /></div>
+     <div><label>رقم البائع</label><InputText class="form-control" @bind-Value="model.SellerPhone" /></div>
+     <div><label>المنطقة</label><InputText class="form-control" @bind-Value="model.Region" /></div>
+     <div><label>الرصيد الافتتاحي</label><InputNumber class="form-control" @bind-Value="model.OpeningBalance" /></div>
+     <div><label>الحد الائتماني</label><InputNumber class="form-control" @bind-Value="model.CreditLimit" /></div>
+    </div>
+    <label class="checkbox-line"><InputCheckbox @bind-Value="model.DebtAlertEnabled" /> تفعيل رسالة SMS عند بلوغ الحد</label>
+    <label>العنوان</label><InputText class="form-control" @bind-Value="model.Address" />
+    <label>ملاحظات</label><InputTextArea class="form-control" @bind-Value="model.Notes" />
+    <div class="premium-form-actions"><button class="btn primary">حفظ العميل</button><button type="button" class="btn ghost" @onclick="Reset">جديد</button></div>
+   </EditForm>
+   @if (!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
+  </div>
+ }
+
+ <div class="premium-list">
+ @foreach (var row in FilteredRows)
+ {
+  var available = Math.Max(0, row.Customer.CreditLimit - row.Balance);
+  var limitReached = row.Balance >= row.Customer.CreditLimit && row.Balance > 0;
+  <article class="premium-customer-card @(limitReached ? "limit" : "")">
+   <div class="customer-avatar">@(string.IsNullOrWhiteSpace(row.Customer.Name) ? "؟" : row.Customer.Name.Substring(0,1))</div>
+   <div class="customer-main"><strong>@row.Customer.Name</strong><small>☎ @(row.Customer.Phone ?? "بدون رقم") · @(string.IsNullOrWhiteSpace(row.Customer.Region) ? "بدون منطقة" : row.Customer.Region)</small><span class="status-pill @(row.Customer.IsActive?"on":"off")">@(row.Customer.IsActive?"نشط":"غير نشط")</span></div>
+   <div class="customer-money"><div><span>الرصيد الحالي</span><b class="@(row.Balance>0?"debt":"good")">@Money(row.Balance)</b></div><div><span>الحد الائتماني</span><b>@Money(row.Customer.CreditLimit)</b></div><div><span>المتاح</span><b>@Money(available)</b></div></div>
+   <div class="customer-actions">
+    @if (Session.CanRecordPayments && row.Balance > 0){<button class="btn small success" @onclick="() => StartPayment(row)">دفعة</button>}
+    @if (Session.IsAdmin){<button class="btn small" @onclick="() => Edit(row.Customer)">تعديل</button><button class="btn small danger" @onclick="() => DeleteAsync(row.Customer.Id)">حذف</button>}
+   </div>
+  </article>
+ }
+ </div>
 </div>
 
 @if (paymentCustomer is not null)
 {
- <div class="modal-backdrop"><div class="modal-card">
-  <h2>تسجيل دفعة: @paymentCustomer.Customer.Name</h2>
-  <label>المبلغ</label><InputNumber class="form-control" @bind-Value="paymentAmount" />
-  <label>طريقة الدفع</label><InputSelect class="form-control" @bind-Value="paymentMethod">
-   <option value="@PaymentMethod.Cash">نقدي</option><option value="@PaymentMethod.Transfer">تحويل</option>
-  </InputSelect>
-  <label>المرجع</label><input class="form-control" @bind="paymentReference" />
-  <div class="actions"><button class="btn success" @onclick="SavePaymentAsync">حفظ</button><button class="btn ghost" @onclick="ClosePayment">إلغاء</button></div>
- </div></div>
+ <div class="modal-backdrop"><div class="modal-card"><h2>تسجيل دفعة: @paymentCustomer.Customer.Name</h2><label>المبلغ</label><InputNumber class="form-control" @bind-Value="paymentAmount" /><label>طريقة الدفع</label><InputSelect class="form-control" @bind-Value="paymentMethod"><option value="@PaymentMethod.Cash">نقدي</option><option value="@PaymentMethod.Transfer">تحويل</option></InputSelect><label>المرجع</label><input class="form-control" @bind="paymentReference" /><div class="actions"><button class="btn success" @onclick="SavePaymentAsync">حفظ</button><button class="btn ghost" @onclick="ClosePayment">إلغاء</button></div></div></div>
 }
 
 @code {
  private List<CustomerBalanceRow> rows=[]; private Customer model=new(); private string? message; private bool ok;
- private CustomerBalanceRow? paymentCustomer; private decimal paymentAmount;
- private PaymentMethod paymentMethod=PaymentMethod.Cash; private string? paymentReference;
+ private CustomerBalanceRow? paymentCustomer; private decimal paymentAmount; private PaymentMethod paymentMethod=PaymentMethod.Cash; private string? paymentReference;
+ private string search=""; private string filter="all"; private bool showEditor;
+ private IEnumerable<CustomerBalanceRow> FilteredRows => rows.Where(x =>
+  (string.IsNullOrWhiteSpace(search) || x.Customer.Name.Contains(search,StringComparison.OrdinalIgnoreCase) || (x.Customer.Phone?.Contains(search,StringComparison.OrdinalIgnoreCase) ?? false)) &&
+  (filter=="all" || (filter=="debt" && x.Balance>0) || (filter=="active" && x.Customer.IsActive) || (filter=="inactive" && !x.Customer.IsActive)));
  protected override async Task OnInitializedAsync()=>await LoadAsync();
  private async Task LoadAsync()=>rows=await Service.GetCustomersAsync();
- private async Task SaveAsync(){try{await Service.SaveCustomerAsync(model);ok=true;message="تم حفظ العميل والحد الائتماني.";Reset();await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
- private void Edit(Customer x)=>model=new Customer{Id=x.Id,SyncKey=x.SyncKey,Name=x.Name,Phone=x.Phone,SellerPhone=x.SellerPhone,Region=x.Region,Address=x.Address,OpeningBalance=x.OpeningBalance,CreditLimit=x.CreditLimit,DebtAlertEnabled=x.DebtAlertEnabled,LastDebtAlertAt=x.LastDebtAlertAt,LastDebtAlertBalance=x.LastDebtAlertBalance,LastDebtAlertLimit=x.LastDebtAlertLimit,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt};
+ private async Task SaveAsync(){try{await Service.SaveCustomerAsync(model);ok=true;message="تم حفظ العميل والحد الائتماني.";Reset();showEditor=false;await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private void Edit(Customer x){model=new Customer{Id=x.Id,SyncKey=x.SyncKey,Name=x.Name,Phone=x.Phone,SellerPhone=x.SellerPhone,Region=x.Region,Address=x.Address,OpeningBalance=x.OpeningBalance,CreditLimit=x.CreditLimit,DebtAlertEnabled=x.DebtAlertEnabled,LastDebtAlertAt=x.LastDebtAlertAt,LastDebtAlertBalance=x.LastDebtAlertBalance,LastDebtAlertLimit=x.LastDebtAlertLimit,Notes=x.Notes,IsActive=x.IsActive,CreatedAt=x.CreatedAt};showEditor=true;}
  private void Reset()=>model=new Customer{CreditLimit=100000m,DebtAlertEnabled=true};
+ private void StartNew(){Reset();showEditor=true;}
+ private void ToggleEditor()=>showEditor=!showEditor;
  private async Task DeleteAsync(long id){try{await Service.DeleteCustomerAsync(id);await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
  private void StartPayment(CustomerBalanceRow row){paymentCustomer=row;paymentAmount=row.Balance;paymentReference=null;}
  private void ClosePayment(){paymentCustomer=null;paymentAmount=0;}
  private async Task SavePaymentAsync(){if(paymentCustomer is null)return;try{await Service.AddCustomerPaymentAsync(paymentCustomer.Customer.Id,null,paymentAmount,paymentMethod,paymentReference);ClosePayment();ok=true;message="تم تسجيل الدفعة وتحديث دين العميل.";await LoadAsync();}catch(Exception ex){ok=false;message=ex.Message;}}
+ private static string Money(decimal value)=>$"{value:N2} ر.ي";
 }
