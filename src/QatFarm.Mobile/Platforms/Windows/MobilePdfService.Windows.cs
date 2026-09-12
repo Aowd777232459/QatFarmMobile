@@ -3,6 +3,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using QatFarm.Mobile.Models;
+using QuestColors = QuestPDF.Helpers.Colors;
 
 namespace QatFarm.Mobile.Services;
 
@@ -153,10 +154,10 @@ public sealed class MobilePdfService
                 page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(11));
                 page.Header().Column(header =>
                 {
-                    header.Item().AlignRight().Text("AWAD SOFT — عواد سوفت").Bold().FontSize(11).FontColor(Colors.Green.Darken2);
-                    header.Item().AlignRight().Text(title).Bold().FontSize(20).FontColor(Colors.Grey.Darken4);
-                    header.Item().AlignRight().Text(subtitle).FontSize(11).FontColor(Colors.Grey.Darken1);
-                    header.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Green.Medium);
+                    header.Item().AlignRight().Text("AWAD SOFT — عواد سوفت").Bold().FontSize(11).FontColor(QuestColors.Green.Darken2);
+                    header.Item().AlignRight().Text(title).Bold().FontSize(20).FontColor(QuestColors.Grey.Darken4);
+                    header.Item().AlignRight().Text(subtitle).FontSize(11).FontColor(QuestColors.Grey.Darken1);
+                    header.Item().PaddingTop(8).LineHorizontal(1).LineColor(QuestColors.Green.Medium);
                 });
                 page.Content().PaddingVertical(16).Column(content);
                 page.Footer().AlignCenter().Text(x =>
@@ -174,14 +175,14 @@ public sealed class MobilePdfService
         column.Item().PaddingVertical(3).Row(row =>
         {
             row.RelativeItem().AlignRight().Text(value).Bold();
-            row.RelativeItem().AlignRight().Text(key).FontColor(Colors.Grey.Darken1);
+            row.RelativeItem().AlignRight().Text(key).FontColor(QuestColors.Grey.Darken1);
         });
 
     private static void Section(ColumnDescriptor column, string text) =>
-        column.Item().PaddingBottom(5).AlignRight().Text(text).Bold().FontSize(14).FontColor(Colors.Green.Darken2);
+        column.Item().PaddingBottom(5).AlignRight().Text(text).Bold().FontSize(14).FontColor(QuestColors.Green.Darken2);
 
     private static void Line(ColumnDescriptor column, string text) =>
-        column.Item().PaddingVertical(3).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingBottom(5).AlignRight().Text(text);
+        column.Item().PaddingVertical(3).BorderBottom(1).BorderColor(QuestColors.Grey.Lighten2).PaddingBottom(5).AlignRight().Text(text);
 
     private static void Space(ColumnDescriptor column) => column.Item().Height(10);
     private static string Money(decimal value) => $"{value:N2} ر.ي";
