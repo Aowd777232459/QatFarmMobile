@@ -36,22 +36,22 @@ public sealed class MobileDb
                 typeof(CultivationExpenseType), typeof(CultivationExpense),
                 typeof(CultivationDebtPayment), typeof(QatType), typeof(DailyExpenseType),
                 typeof(SalesInvoice), typeof(SalesInvoiceItem), typeof(InvoiceExpense),
-                typeof(CustomerPayment), typeof(AuditLog), typeof(SystemSetting));
+                typeof(CustomerPayment), typeof(CustomDocumentTemplate), typeof(CustomDocumentField),
+                typeof(CustomDocumentRecord), typeof(AuditLog), typeof(SystemSetting));
             await SeedAsync(_db);
             _initialized = true;
         }
         finally { _gate.Release(); }
     }
 
-    // sqlite-net ينشئ الجداول الجديدة لكنه لا يضيف أعمدة إلى الجداول القديمة.
-    // لذلك تتم هذه الترقية قبل CreateTablesAsync حتى تعمل النسخة الجديدة فوق بيانات المستخدم الحالية.
     private static async Task UpgradeExistingTablesForSyncAsync(SQLiteAsyncConnection db)
     {
         string[] tables =
         [
             "AppUsers", "Farms", "Customers", "Creditors", "CultivationExpenseTypes",
             "CultivationExpenses", "CultivationDebtPayments", "QatTypes", "DailyExpenseTypes",
-            "SalesInvoices", "SalesInvoiceItems", "InvoiceExpenses", "CustomerPayments"
+            "SalesInvoices", "SalesInvoiceItems", "InvoiceExpenses", "CustomerPayments",
+            "CustomDocumentTemplates", "CustomDocumentFields", "CustomDocumentRecords"
         ];
 
         foreach (var table in tables)
@@ -70,7 +70,6 @@ public sealed class MobileDb
                 $"CREATE UNIQUE INDEX IF NOT EXISTS \"UX_{table}_SyncKey\" ON \"{table}\"(SyncKey);");
         }
 
-        // ترقية حسابات المستخدمين إلى رمز دخول من 6 أحرف وصلاحيات فواتير مستقلة.
         var usersExist = await db.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'AppUsers';");
         if (usersExist > 0)
@@ -87,7 +86,6 @@ public sealed class MobileDb
             await db.ExecuteAsync("UPDATE \"AppUsers\" SET CanEditInvoices = 1, CanDeleteInvoices = 1 WHERE Role = 0;");
         }
 
-        // بيانات تأكيد وصول الزكاة.
         var invoicesExist = await db.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'SalesInvoices';");
         if (invoicesExist > 0)
@@ -97,9 +95,6 @@ public sealed class MobileDb
                 await db.ExecuteAsync("ALTER TABLE \"SalesInvoices\" ADD COLUMN ZakatRecipientName TEXT;");
         }
 
-        // ترقية بيانات العملاء الخاصة بالحد الائتماني والتنبيه النصي.
-        // يتم ضبط 100,000 ريال كحد افتراضي مرة واحدة فقط للعملاء السابقين
-        // عند إضافة أعمدة التنبيه لأول مرة، ثم يظل للمدير حرية تغييره حتى إلى صفر.
         var customersExist = await db.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'Customers';");
         if (customersExist > 0)
