@@ -19,6 +19,7 @@ public sealed class AwadStorageService
     public string InvoicesPath { get; }
     public string ReportsPath { get; }
     public string CustomersPath { get; }
+    public string CustomDocumentsPath { get; }
     public string SyncPath { get; }
     public string DatabasePath { get; }
 
@@ -30,7 +31,6 @@ public sealed class AwadStorageService
         DataPath = Path.Combine(RootPath, "البيانات");
         DatabasePath = Path.Combine(DataPath, "QatFarm.db3");
 #else
-        // نحافظ على مسار قاعدة Android السابق حتى لا تضيع بيانات المستخدم عند الترقية.
         RootPath = Path.Combine(FileSystem.AppDataDirectory, "عواد سوفت");
         DataPath = Path.Combine(RootPath, "البيانات");
         DatabasePath = Path.Combine(FileSystem.AppDataDirectory, "QatFarmMobile.db3");
@@ -39,6 +39,7 @@ public sealed class AwadStorageService
         InvoicesPath = Path.Combine(RootPath, "فواتير البيع");
         ReportsPath = Path.Combine(RootPath, "التقارير");
         CustomersPath = Path.Combine(RootPath, "العملاء");
+        CustomDocumentsPath = Path.Combine(RootPath, "النماذج المخصصة");
         SyncPath = Path.Combine(RootPath, "المزامنة");
         EnsureStructure();
     }
@@ -51,24 +52,23 @@ public sealed class AwadStorageService
         Directory.CreateDirectory(InvoicesPath);
         Directory.CreateDirectory(ReportsPath);
         Directory.CreateDirectory(CustomersPath);
+        Directory.CreateDirectory(CustomDocumentsPath);
         Directory.CreateDirectory(SyncPath);
 
 #if WINDOWS
         var readme = Path.Combine(RootPath, "اقرأني.txt");
-        if (!File.Exists(readme))
-        {
-            File.WriteAllText(readme,
-                "مجلد عواد سوفت\r\n" +
-                "================\r\n" +
-                "يتم إنشاء هذا المجلد تلقائياً بواسطة نظام زراعي عواد سوفت.\r\n" +
-                "البيانات: قاعدة البيانات الرئيسية.\r\n" +
-                "النسخ الاحتياطية: نسخ تلقائية مؤرخة.\r\n" +
-                "فواتير البيع: ملفات الفواتير المصدرة.\r\n" +
-                "التقارير: ملفات التقارير المصدرة.\r\n" +
-                "العملاء: لقطة JSON محدثة من بيانات العملاء.\r\n" +
-                "المزامنة: معلومات وحالة الربط بين الكمبيوتر والجوال.\r\n",
-                System.Text.Encoding.UTF8);
-        }
+        File.WriteAllText(readme,
+            "مجلد عواد سوفت\r\n" +
+            "================\r\n" +
+            "يتم إنشاء هذا المجلد تلقائياً بواسطة نظام زراعي عواد سوفت.\r\n" +
+            "البيانات: قاعدة البيانات الرئيسية ولقطات JSON.\r\n" +
+            "النسخ الاحتياطية: نسخ تلقائية مؤرخة من قاعدة البيانات كاملة.\r\n" +
+            "فواتير البيع: ملفات الفواتير المصدرة.\r\n" +
+            "التقارير: ملفات التقارير المصدرة.\r\n" +
+            "العملاء: لقطة محدثة من بيانات العملاء.\r\n" +
+            "النماذج المخصصة: قوالب ومستندات أنشأها المدير من مصمم النظام الداخلي.\r\n" +
+            "المزامنة: معلومات وحالة الربط بين الكمبيوتر والجوال.\r\n",
+            System.Text.Encoding.UTF8);
 #endif
     }
 
@@ -139,6 +139,9 @@ public sealed class AwadStorageService
         var invoiceItems = await conn.Table<SalesInvoiceItem>().ToListAsync();
         var payments = await conn.Table<CustomerPayment>().ToListAsync();
         var cultivation = await conn.Table<CultivationExpense>().ToListAsync();
+        var customTemplates = await conn.Table<CustomDocumentTemplate>().ToListAsync();
+        var customFields = await conn.Table<CustomDocumentField>().ToListAsync();
+        var customRecords = await conn.Table<CustomDocumentRecord>().ToListAsync();
 
         await File.WriteAllTextAsync(Path.Combine(CustomersPath, "customers-latest.json"), JsonSerializer.Serialize(customers, json));
         await File.WriteAllTextAsync(Path.Combine(DataPath, "farms-latest.json"), JsonSerializer.Serialize(farms, json));
@@ -146,6 +149,9 @@ public sealed class AwadStorageService
         await File.WriteAllTextAsync(Path.Combine(DataPath, "sales-invoice-items-latest.json"), JsonSerializer.Serialize(invoiceItems, json));
         await File.WriteAllTextAsync(Path.Combine(DataPath, "customer-payments-latest.json"), JsonSerializer.Serialize(payments, json));
         await File.WriteAllTextAsync(Path.Combine(DataPath, "cultivation-expenses-latest.json"), JsonSerializer.Serialize(cultivation, json));
+        await File.WriteAllTextAsync(Path.Combine(CustomDocumentsPath, "templates-latest.json"), JsonSerializer.Serialize(customTemplates, json));
+        await File.WriteAllTextAsync(Path.Combine(CustomDocumentsPath, "fields-latest.json"), JsonSerializer.Serialize(customFields, json));
+        await File.WriteAllTextAsync(Path.Combine(CustomDocumentsPath, "documents-latest.json"), JsonSerializer.Serialize(customRecords, json));
     }
 
     private void WriteBackupManifest(string backupPath, string reason)
