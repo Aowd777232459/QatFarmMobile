@@ -15,6 +15,7 @@ public static class MauiProgram
         builder.Services.AddBlazorWebViewDeveloperTools();
         builder.Logging.AddDebug();
 #endif
+        builder.Services.AddSingleton<AwadStorageService>();
         builder.Services.AddSingleton<MobileDb>();
         builder.Services.AddSingleton<AppSession>();
         builder.Services.AddSingleton<DebtSmsService>();
@@ -23,7 +24,12 @@ public static class MauiProgram
         builder.Services.AddSingleton<MobilePdfService>();
         builder.Services.AddSingleton<BackupService>();
         builder.Services.AddSingleton<LocalSyncService>();
+        builder.Services.AddSingleton<DesktopSyncServer>();
+#if WINDOWS
+        builder.Services.AddSingleton<IVoiceRecognitionService, WindowsVoiceRecognitionService>();
+#else
         builder.Services.AddSingleton<IVoiceRecognitionService, AndroidVoiceRecognitionService>();
+#endif
         builder.Services.AddSingleton<VoiceAssistantService>();
         builder.Services.AddSingleton<GuidedVoiceAssistantService>();
         return builder.Build();
