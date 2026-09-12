@@ -24,6 +24,7 @@ public sealed class LocalSyncService : IDisposable
     private static readonly string[] ImportOrder =
     [
         "Farm", "Customer", "Creditor", "CultivationExpenseType", "QatType", "DailyExpenseType",
+        "CustomDocumentTemplate", "CustomDocumentField", "CustomDocumentRecord",
         "CultivationExpense", "SalesInvoice", "CultivationDebtPayment", "SalesInvoiceItem",
         "InvoiceExpense", "CustomerPayment"
     ];
@@ -137,6 +138,9 @@ public sealed class LocalSyncService : IDisposable
         var cultivationTypes = await db.Table<CultivationExpenseType>().ToListAsync();
         var qatTypes = await db.Table<QatType>().ToListAsync();
         var dailyTypes = await db.Table<DailyExpenseType>().ToListAsync();
+        var customTemplates = await db.Table<CustomDocumentTemplate>().ToListAsync();
+        var customFields = await db.Table<CustomDocumentField>().ToListAsync();
+        var customRecords = await db.Table<CustomDocumentRecord>().ToListAsync();
         var cultivation = await db.Table<CultivationExpense>().ToListAsync();
         var invoices = await db.Table<SalesInvoice>().ToListAsync();
         var debtPayments = await db.Table<CultivationDebtPayment>().ToListAsync();
@@ -150,6 +154,7 @@ public sealed class LocalSyncService : IDisposable
         var cultivationTypeKeys = cultivationTypes.ToDictionary(x => x.Id, x => x.SyncKey);
         var qatTypeKeys = qatTypes.ToDictionary(x => x.Id, x => x.SyncKey);
         var dailyTypeKeys = dailyTypes.ToDictionary(x => x.Id, x => x.SyncKey);
+        var customTemplateKeys = customTemplates.ToDictionary(x => x.Id, x => x.SyncKey);
         var cultivationKeys = cultivation.ToDictionary(x => x.Id, x => x.SyncKey);
         var invoiceKeys = invoices.ToDictionary(x => x.Id, x => x.SyncKey);
         var records = new List<LocalSyncRecord>();
@@ -160,6 +165,23 @@ public sealed class LocalSyncService : IDisposable
         records.AddRange(cultivationTypes.Select(x => Record("CultivationExpenseType", x, new { x.Name, x.IsActive })));
         records.AddRange(qatTypes.Select(x => Record("QatType", x, new { x.Name, x.IsActive })));
         records.AddRange(dailyTypes.Select(x => Record("DailyExpenseType", x, new { x.Name, x.IsActive })));
+        records.AddRange(customTemplates.Select(x => Record("CustomDocumentTemplate", x, new
+        {
+            x.Name, x.Code, x.NumberPrefix, x.NextNumber, x.Category, x.Description, x.IsActive,
+            x.AllowLineItems, x.LineSchemaJson, x.GrandTotalFormula, x.Version
+        })));
+        records.AddRange(customFields.Select(x => Record("CustomDocumentField", x, new
+        {
+            TemplateKey = customTemplateKeys.GetValueOrDefault(x.TemplateId),
+            x.Key, x.Label, x.FieldType, x.Section, x.SortOrder, x.IsRequired, x.IncludeInPrint,
+            x.IsSummary, x.DefaultValue, x.OptionsJson, x.Formula, x.Placeholder
+        })));
+        records.AddRange(customRecords.Select(x => Record("CustomDocumentRecord", x, new
+        {
+            TemplateKey = customTemplateKeys.GetValueOrDefault(x.TemplateId),
+            x.DocumentNumber, x.DocumentDate, x.ValuesJson, x.LinesJson, x.GrandTotal,
+            x.Status, x.CreatedByName, x.TemplateVersion, x.Notes
+        })));
         records.AddRange(cultivation.Select(x => Record("CultivationExpense", x, new
         {
             FarmKey = farmKeys.GetValueOrDefault(x.FarmId),
@@ -248,6 +270,9 @@ public sealed class LocalSyncService : IDisposable
             case "CultivationExpenseType": await ApplyNamedAsync<CultivationExpenseType>(db, r); break;
             case "QatType": await ApplyNamedAsync<QatType>(db, r); break;
             case "DailyExpenseType": await ApplyNamedAsync<DailyExpenseType>(db, r); break;
+            case "CustomDocumentTemplate": await ApplyCustomTemplateAsync(db, r); break;
+            case "CustomDocumentField": await ApplyCustomFieldAsync(db, r); break;
+            case "CustomDocumentRecord": await ApplyCustomRecordAsync(db, r); break;
             case "CultivationExpense": await ApplyCultivationAsync(db, r); break;
             case "SalesInvoice": await ApplyInvoiceAsync(db, r); break;
             case "CultivationDebtPayment": await ApplyDebtPaymentAsync(db, r); break;
@@ -261,6 +286,35 @@ public sealed class LocalSyncService : IDisposable
     {
         var d = Read<NamedData>(r); var row = await FindAsync<T>(db, r.Key) ?? new T();
         Stamp(row, r); typeof(T).GetProperty("Name")!.SetValue(row, d.Name); typeof(T).GetProperty("IsActive")!.SetValue(row, d.IsActive);
+        await UpsertAsync(db, row);
+    }
+
+    private static async Task ApplyCustomTemplateAsync(SQLiteAsyncConnection db, LocalSyncRecord r)
+    {
+        var d = Read<CustomTemplateData>(r); var row = await FindAsync<CustomDocumentTemplate>(db, r.Key) ?? new CustomDocumentTemplate();
+        Stamp(row, r); row.Name = d.Name; row.Code = d.Code; row.NumberPrefix = d.NumberPrefix; row.NextNumber = d.NextNumber;
+        row.Category = d.Category; row.Description = d.Description; row.IsActive = d.IsActive; row.AllowLineItems = d.AllowLineItems;
+        row.LineSchemaJson = d.LineSchemaJson; row.GrandTotalFormula = d.GrandTotalFormula; row.Version = d.Version;
+        await UpsertAsync(db, row);
+    }
+
+    private static async Task ApplyCustomFieldAsync(SQLiteAsyncConnection db, LocalSyncRecord r)
+    {
+        var d = Read<CustomFieldData>(r); var template = await FindAsync<CustomDocumentTemplate>(db, d.TemplateKey); if (template is null) return;
+        var row = await FindAsync<CustomDocumentField>(db, r.Key) ?? new CustomDocumentField(); Stamp(row, r);
+        row.TemplateId = template.Id; row.Key = d.Key; row.Label = d.Label; row.FieldType = d.FieldType; row.Section = d.Section;
+        row.SortOrder = d.SortOrder; row.IsRequired = d.IsRequired; row.IncludeInPrint = d.IncludeInPrint; row.IsSummary = d.IsSummary;
+        row.DefaultValue = d.DefaultValue; row.OptionsJson = d.OptionsJson; row.Formula = d.Formula; row.Placeholder = d.Placeholder;
+        await UpsertAsync(db, row);
+    }
+
+    private static async Task ApplyCustomRecordAsync(SQLiteAsyncConnection db, LocalSyncRecord r)
+    {
+        var d = Read<CustomRecordData>(r); var template = await FindAsync<CustomDocumentTemplate>(db, d.TemplateKey); if (template is null) return;
+        var row = await FindAsync<CustomDocumentRecord>(db, r.Key) ?? new CustomDocumentRecord(); Stamp(row, r);
+        row.TemplateId = template.Id; row.DocumentNumber = d.DocumentNumber; row.DocumentDate = d.DocumentDate; row.ValuesJson = d.ValuesJson;
+        row.LinesJson = d.LinesJson; row.GrandTotal = d.GrandTotal; row.Status = d.Status; row.CreatedByName = d.CreatedByName;
+        row.TemplateVersion = d.TemplateVersion; row.Notes = d.Notes;
         await UpsertAsync(db, row);
     }
 
@@ -310,6 +364,7 @@ public sealed class LocalSyncService : IDisposable
     {
         await EnsureKeysAsync<Farm>(db); await EnsureKeysAsync<Customer>(db); await EnsureKeysAsync<Creditor>(db);
         await EnsureKeysAsync<CultivationExpenseType>(db); await EnsureKeysAsync<QatType>(db); await EnsureKeysAsync<DailyExpenseType>(db);
+        await EnsureKeysAsync<CustomDocumentTemplate>(db); await EnsureKeysAsync<CustomDocumentField>(db); await EnsureKeysAsync<CustomDocumentRecord>(db);
         await EnsureKeysAsync<CultivationExpense>(db); await EnsureKeysAsync<SalesInvoice>(db); await EnsureKeysAsync<CultivationDebtPayment>(db);
         await EnsureKeysAsync<SalesInvoiceItem>(db); await EnsureKeysAsync<InvoiceExpense>(db); await EnsureKeysAsync<CustomerPayment>(db);
     }
@@ -364,6 +419,9 @@ public sealed class LocalSyncService : IDisposable
     private sealed record CustomerData(string Name, string? Phone, string? SellerPhone, string? Region, string? Address, decimal OpeningBalance, decimal CreditLimit, bool? DebtAlertEnabled, string? Notes, bool IsActive);
     private sealed record CreditorData(string Name, string? Phone, string? Address, string? Notes, bool IsActive);
     private sealed record NamedData(string Name, bool IsActive);
+    private sealed record CustomTemplateData(string Name, string Code, string NumberPrefix, int NextNumber, string Category, string? Description, bool IsActive, bool AllowLineItems, string LineSchemaJson, string? GrandTotalFormula, int Version);
+    private sealed record CustomFieldData(string TemplateKey, string Key, string Label, CustomFieldType FieldType, string Section, int SortOrder, bool IsRequired, bool IncludeInPrint, bool IsSummary, string? DefaultValue, string? OptionsJson, string? Formula, string? Placeholder);
+    private sealed record CustomRecordData(string TemplateKey, string DocumentNumber, DateTime DocumentDate, string ValuesJson, string LinesJson, decimal GrandTotal, string Status, string? CreatedByName, int TemplateVersion, string? Notes);
     private sealed record CultivationData(string FarmKey, string ExpenseTypeKey, decimal Amount, DateTime ExpenseDate, CultivationExpensePaymentType PaymentType, string? CreditorKey, decimal PaidAmount, DateTime? DueDate, CultivationDebtStatus DebtStatus, string? Notes, string ReceiptNumber);
     private sealed record InvoiceData(string InvoiceNumber, string FarmKey, string? CustomerKey, DateTime InvoiceDate, DateTime? PaymentDueDate, string? BuyerName, string? BuyerPhone, decimal GrossAmount, decimal ZakatPercent, decimal ZakatAmount, ZakatPaymentStatus ZakatStatus, DateTime? ZakatPaidAt, string? ZakatPaymentReference, string? ZakatRecipientName, decimal TotalExpenses, decimal NetAmount, decimal AmountPaid, decimal AmountDue, PaymentMethod PaymentMethod, PaymentStatus PaymentStatus, InvoiceStatus Status, string? Notes);
     private sealed record DebtPaymentData(string CultivationExpenseKey, string CreditorKey, decimal Amount, DateTime PaymentDate, PaymentMethod PaymentMethod, string? ReferenceNumber, string? Notes);
