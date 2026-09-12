@@ -2,6 +2,8 @@
 @inject BackupService Backup
 @inject AppSession Session
 @inject LocalSyncService LocalSync
+@inject DesktopSyncServer DesktopSync
+@inject AwadStorageService Storage
 @inject Microsoft.JSInterop.IJSRuntime JS
 @using Microsoft.JSInterop
 @implements IDisposable
@@ -16,30 +18,53 @@
  </div>
  <div class="settings-actions"><button class="btn primary" @onclick="SaveAppearance">حفظ المظهر</button></div>
 </div>
-<div class="panel">
- <h2>مزامنة Wi-Fi مع الكمبيوتر</h2>
- <div class="form-grid">
-  <div><label>عنوان الكمبيوتر</label><input class="form-control" @bind="serverUrl" placeholder="192.168.1.5" inputmode="url" /></div>
-  <div><label>رمز الربط</label><input class="form-control" @bind="pairingKey" placeholder="AWAD-XXXXXXXXXXXX" autocomplete="off" /></div>
+
+@if (OperatingSystem.IsWindows())
+{
+ <div class="panel sync-pc-panel">
+  <h2>ربط الجوال بالكمبيوتر</h2>
+  <div class="form-grid">
+   <div><label>عنوان الكمبيوتر داخل الشبكة</label><input class="form-control" value="@DesktopSync.ServerUrl" readonly /></div>
+   <div><label>رمز الربط</label><input class="form-control" value="@DesktopSync.PairingKey" readonly /></div>
+  </div>
+  <div class="sync-status @(DesktopSync.IsRunning ? "success" : "danger")">@DesktopSync.LastMessage</div>
+  <div class="inline-warning">في الجوال افتح: الإعدادات ← مزامنة Wi-Fi، ثم أدخل عنوان الكمبيوتر ورمز الربط الظاهرين هنا. المزامنة ثنائية الاتجاه: ما يتغير في الجوال يصل للكمبيوتر، وما يتغير في الكمبيوتر يرجع للجوال.</div>
+  <div class="setting-row"><span>مجلد عواد سوفت</span><strong class="ltr">@Storage.RootPath</strong></div>
+  <div class="setting-row"><span>النسخ الاحتياطي التلقائي</span><strong>مفعل — عند التشغيل وبعد المزامنة وعند تغيّر البيانات</strong></div>
  </div>
- <label class="check"><input type="checkbox" @bind="autoSync" /> مزامنة تلقائية</label>
- <div class="sync-status @(LocalSync.IsSyncing ? "busy" : "")">@LocalSync.LastMessage</div>
- <div class="settings-actions">
-  <button class="btn primary" @onclick="SaveSyncAsync" disabled="@LocalSync.IsSyncing">حفظ واختبار الربط</button>
-  <button class="btn" @onclick="SyncNowAsync" disabled="@LocalSync.IsSyncing">مزامنة الآن</button>
+}
+else
+{
+ <div class="panel">
+  <h2>مزامنة Wi-Fi مع الكمبيوتر</h2>
+  <div class="form-grid">
+   <div><label>عنوان الكمبيوتر</label><input class="form-control" @bind="serverUrl" placeholder="192.168.1.5" inputmode="url" /></div>
+   <div><label>رمز الربط</label><input class="form-control" @bind="pairingKey" placeholder="AWAD-123456" autocomplete="off" /></div>
+  </div>
+  <label class="check"><input type="checkbox" @bind="autoSync" /> مزامنة تلقائية</label>
+  <div class="sync-status @(LocalSync.IsSyncing ? "busy" : "")">@LocalSync.LastMessage</div>
+  <div class="settings-actions">
+   <button class="btn primary" @onclick="SaveSyncAsync" disabled="@LocalSync.IsSyncing">حفظ واختبار الربط</button>
+   <button class="btn" @onclick="SyncNowAsync" disabled="@LocalSync.IsSyncing">مزامنة الآن</button>
+  </div>
  </div>
-</div>
+}
+
 <div class="panel">
  <h2>نسخة احتياطية محلية</h2>
  <div class="actions">
   <button class="btn primary @(Session.IsAdmin ? "" : "locked-btn")" @onclick="ExportAsync" disabled="@(!Session.IsAdmin)">إنشاء ومشاركة نسخة</button>
   <button class="btn danger @(Session.IsAdmin ? "" : "locked-btn")" @onclick="RestoreAsync" disabled="@(!Session.IsAdmin)">استعادة نسخة</button>
  </div>
+ @if (OperatingSystem.IsWindows())
+ {
+  <div class="inline-warning">يحفظ النظام تلقائياً نسخة قاعدة البيانات ولقطات العملاء والفواتير داخل Documents\عواد سوفت، مع الاحتفاظ بالنسخ المؤرخة.</div>
+ }
  @if(!string.IsNullOrEmpty(message)){<div class="alert @(ok?"success":"danger")">@message</div>}
 </div>
 <div class="panel">
  <h2>معلومات التطبيق</h2>
- <div class="setting-row"><span>الإصدار</span><strong>2.2.1</strong></div>
+ <div class="setting-row"><span>الإصدار</span><strong>2.3.0</strong></div>
  <div class="actions"><a class="btn ghost" href="/privacy">سياسة الخصوصية</a></div>
 </div>
 @code {
@@ -51,6 +76,7 @@
  {
   serverUrl = LocalSync.ServerUrl; pairingKey = LocalSync.PairingKey; autoSync = LocalSync.AutoSync;
   LocalSync.Changed += SyncChanged;
+  DesktopSync.Changed += SyncChanged;
  }
 
  protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -77,7 +103,7 @@
  private async Task SaveSyncAsync(){await LocalSync.SavePreferencesAsync(serverUrl,pairingKey,autoSync);serverUrl=LocalSync.ServerUrl;}
  private async Task SyncNowAsync(){await LocalSync.SyncNowAsync();}
  private void SyncChanged()=>_ = InvokeAsync(StateHasChanged);
- public void Dispose()=>LocalSync.Changed-=SyncChanged;
+ public void Dispose(){LocalSync.Changed-=SyncChanged;DesktopSync.Changed-=SyncChanged;}
  private async Task ExportAsync(){try{await Backup.ShareBackupAsync();ok=true;message="تم إنشاء النسخة وفتح المشاركة.";}catch(Exception ex){ok=false;message=ex.Message;}}
  private async Task RestoreAsync(){try{await Backup.RestoreBackupAsync();ok=true;message="تمت الاستعادة. أعد تشغيل التطبيق.";}catch(Exception ex){ok=false;message=ex.Message;}}
  private sealed class AppearancePreferences{public string Theme{get;set;}="green";public string Background{get;set;}="none";public double FontScale{get;set;}=1;public string Language{get;set;}="ar";}
