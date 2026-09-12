@@ -12,7 +12,8 @@
   <div class="sidebar-caption">القائمة الرئيسية</div>
   <nav class="sidebar-nav" @onclick="CloseMenu">
    <NavLink href="/" Match="NavLinkMatch.All"><span>◉</span>لوحة التحكم</NavLink>
-   <NavLink href="/invoices"><span>▤</span>الفواتير</NavLink>
+   <NavLink href="/invoices"><span>▤</span>فواتير البيع</NavLink>
+   <NavLink href="/custom-documents"><span>▧</span>النماذج المخصصة</NavLink>
    <NavLink href="/customers"><span>●</span>العملاء</NavLink>
    <NavLink href="/farms"><span>♣</span>المزارع</NavLink>
    <NavLink href="/cultivation"><span>✦</span>الخسائر</NavLink>
@@ -20,6 +21,7 @@
    @if (Session.IsAdmin)
    {
     <NavLink href="/catalogs"><span>▦</span>الأصناف والقوائم</NavLink>
+    <NavLink href="/system-builder"><span>⌘</span>مصمم النظام الداخلي</NavLink>
    }
    <NavLink href="/reports"><span>▧</span>التقارير</NavLink>
    <NavLink href="/zakat"><span>◈</span>الزكاة</NavLink>
@@ -33,7 +35,7 @@
   <div class="sidebar-footer">
    <strong>@Session.CurrentUser?.FullName</strong>
    <small>@RoleText()</small>
-   <span>الإصدار 2.2.1</span>
+   <span>الإصدار 2.3.0</span>
   </div>
  </aside>
 
@@ -59,9 +61,9 @@
 
  <nav class="bottom-nav accounting-nav reference-mobile-nav @(IsInvoiceEditor() ? "invoice-route-hidden" : "")">
   <NavLink href="/" Match="NavLinkMatch.All"><span class="nav-glyph">⌂</span><small>الرئيسية</small></NavLink>
-  <NavLink href="/invoices"><span class="nav-glyph">▤</span><small>الفواتير</small></NavLink>
+  <NavLink href="/invoices"><span class="nav-glyph">▤</span><small>المبيعات</small></NavLink>
   <NavLink class="center-nav-action" href="/invoice/new"><span>＋</span><small>جديد</small></NavLink>
-  <NavLink href="/customers"><span class="nav-glyph">◎</span><small>العملاء</small></NavLink>
+  <NavLink href="/custom-documents"><span class="nav-glyph">▧</span><small>نماذجي</small></NavLink>
   <NavLink href="/more"><span class="nav-glyph">•••</span><small>المزيد</small></NavLink>
  </nav>
 </div>
@@ -71,14 +73,29 @@
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
     private void Logout() { Session.Logout(); Navigation.NavigateTo("/"); }
+    private string CurrentPath() => Navigation.ToBaseRelativePath(Navigation.Uri);
     private bool IsInvoiceEditor()
     {
-        var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var path = CurrentPath();
         return path.StartsWith("invoice/new", StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith("invoice/", StringComparison.OrdinalIgnoreCase);
+               (path.StartsWith("invoice/", StringComparison.OrdinalIgnoreCase) && !path.StartsWith("invoices", StringComparison.OrdinalIgnoreCase));
     }
-    private string TopTitle() => IsInvoiceEditor() ? "إدخال فاتورة بيع" : "نظام زراعي عواد سوفت";
-    private string TopSubtitle() => IsInvoiceEditor() ? "" : "لإدارة المزارع وبيع القات";
+    private string TopTitle()
+    {
+        var path = CurrentPath();
+        if (IsInvoiceEditor()) return "إدخال فاتورة بيع";
+        if (path.StartsWith("system-builder", StringComparison.OrdinalIgnoreCase)) return "مصمم النظام الداخلي";
+        if (path.StartsWith("custom-document", StringComparison.OrdinalIgnoreCase)) return "النماذج والفواتير المخصصة";
+        return "نظام زراعي عواد سوفت";
+    }
+    private string TopSubtitle()
+    {
+        var path = CurrentPath();
+        if (IsInvoiceEditor()) return string.Empty;
+        if (path.StartsWith("system-builder", StringComparison.OrdinalIgnoreCase)) return "أنشئ وعدّل نماذجك دون تحديث البرنامج";
+        if (path.StartsWith("custom-document", StringComparison.OrdinalIgnoreCase)) return "مستندات مرنة حسب احتياج العمل";
+        return "لإدارة المزارع وبيع القات";
+    }
     private string RoleText() => Session.CurrentUser?.Role switch
     {
         UserRole.Administrator => "المدير العام",
