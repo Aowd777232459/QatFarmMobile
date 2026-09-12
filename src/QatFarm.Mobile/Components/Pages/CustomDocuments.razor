@@ -1,0 +1,243 @@
+@page "/custom-documents"
+@page "/custom-document/{TemplateId:long}"
+@inject CustomDocumentService Designer
+@inject QatFarm.Mobile.Data.MobileDb Db
+@inject NavigationManager Navigation
+
+<h1>@(template is null ? "النماذج والفواتير المخصصة" : template.Name)</h1>
+
+@if (template is null)
+{
+    <div class="panel premium-panel">
+        <div class="section-head"><div><h2>اختر النموذج</h2><p>كل نموذج هنا تم إنشاؤه من داخل إعدادات النظام ويمكن استخدامه على الجوال والكمبيوتر.</p></div></div>
+        <div class="custom-template-grid">
+            @foreach (var item in templates)
+            {
+                <button class="custom-template-card" @onclick="() => Navigation.NavigateTo($\"/custom-document/{item.Id}\")">
+                    <span class="custom-template-icon">▧</span>
+                    <strong>@item.Name</strong>
+                    <small>@item.Category • @item.NumberPrefix</small>
+                </button>
+            }
+        </div>
+    </div>
+    <div class="panel premium-panel">
+        <h2>آخر المستندات</h2>
+        @if (records.Count == 0) { <div class="empty-state">لا توجد مستندات مخصصة بعد.</div> }
+        else
+        {
+            <div class="builder-table">
+                @foreach (var r in records.Take(20))
+                {
+                    <div class="builder-row"><div><strong>@r.DocumentNumber</strong><small>@r.DocumentDate.ToString("yyyy/MM/dd HH:mm") • @r.CreatedByName</small></div><strong>@r.GrandTotal.ToString("N2") ر.ي</strong></div>
+                }
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="panel premium-panel custom-document-head">
+        <div class="section-head">
+            <div><h2>@template.Name</h2><p>@template.Description</p></div>
+            <button class="btn" @onclick="() => Navigation.NavigateTo(\"/custom-documents\")">كل النماذج</button>
+        </div>
+        <div class="document-badges"><span>@template.Category</span><span>الإصدار @template.Version</span><span>@template.NumberPrefix</span></div>
+    </div>
+
+    @foreach (var section in fields.GroupBy(x => x.Section))
+    {
+        <div class="panel premium-panel">
+            <h2>@section.Key</h2>
+            <div class="form-grid builder-grid">
+                @foreach (var field in section.OrderBy(x => x.SortOrder))
+                {
+                    <div class="@(field.FieldType == CustomFieldType.Notes ? "wide" : "")">
+                        <label>@field.Label @(field.IsRequired ? "*" : "")</label>
+                        @switch (field.FieldType)
+                        {
+                            case CustomFieldType.Number:
+                            case CustomFieldType.Money:
+                                <input class="form-control" inputmode="decimal" value="@GetHeader(field.Key)" @oninput="e => SetHeader(field.Key, e.Value?.ToString())" placeholder="@field.Placeholder" />
+                                break;
+                            case CustomFieldType.Date:
+                                <input class="form-control" type="date" value="@GetHeader(field.Key)" @onchange="e => SetHeader(field.Key, e.Value?.ToString())" />
+                                break;
+                            case CustomFieldType.Select:
+                                <select class="form-control" value="@GetHeader(field.Key)" @onchange="e => SetHeader(field.Key, e.Value?.ToString())"><option value="">اختر...</option>@foreach(var option in Designer.ParseOptions(field.OptionsJson)){<option value="@option">@option</option>}</select>
+                                break;
+                            case CustomFieldType.Checkbox:
+                                <label class="check"><input type="checkbox" checked="@IsChecked(field.Key)" @onchange="e => SetHeader(field.Key, (bool)e.Value! ? \"true\" : \"false\")" /> نعم</label>
+                                break;
+                            case CustomFieldType.Customer:
+                                <select class="form-control" value="@GetHeader(field.Key)" @onchange="e => SetHeader(field.Key, e.Value?.ToString())"><option value="">اختر العميل...</option>@foreach(var customer in customers){<option value="@customer.Name">@customer.Name</option>}</select>
+                                break;
+                            case CustomFieldType.Farm:
+                                <select class="form-control" value="@GetHeader(field.Key)" @onchange="e => SetHeader(field.Key, e.Value?.ToString())"><option value="">اختر المزرعة...</option>@foreach(var farm in farms){<option value="@farm.Name">@farm.Name</option>}</select>
+                                break;
+                            case CustomFieldType.Calculated:
+                                <div class="calculated-value">@CalculatedHeader(field).ToString("N2")</div>
+                                break;
+                            case CustomFieldType.Notes:
+                                <textarea class="form-control" value="@GetHeader(field.Key)" @oninput="e => SetHeader(field.Key, e.Value?.ToString())"></textarea>
+                                break;
+                            default:
+                                <input class="form-control" value="@GetHeader(field.Key)" @oninput="e => SetHeader(field.Key, e.Value?.ToString())" placeholder="@field.Placeholder" />
+                                break;
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (template.AllowLineItems)
+    {
+        <div class="panel premium-panel">
+            <div class="section-head"><div><h2>الأصناف / البنود</h2><p>يمكن إضافة أي عدد من الصفوف حسب احتياج المستند.</p></div><button class="btn primary" @onclick="AddLine">＋ إضافة بند</button></div>
+            <div class="custom-lines-wrap">
+                @for (var rowIndex = 0; rowIndex < lines.Count; rowIndex++)
+                {
+                    var row = lines[rowIndex];
+                    <div class="custom-line-card">
+                        <div class="custom-line-title"><strong>البند @(rowIndex + 1)</strong><button class="btn danger" @onclick="() => RemoveLine(row)">حذف</button></div>
+                        <div class="form-grid builder-grid">
+                            @foreach (var column in lineSchema.OrderBy(x => x.SortOrder))
+                            {
+                                <div>
+                                    <label>@column.Label @(column.IsRequired ? "*" : "")</label>
+                                    @if (column.FieldType == CustomFieldType.Calculated)
+                                    {
+                                        <div class="calculated-value">@CalculatedLine(row, column).ToString("N2")</div>
+                                    }
+                                    else if (column.FieldType == CustomFieldType.Select)
+                                    {
+                                        <select class="form-control" value="@GetLine(row,column.Key)" @onchange="e => SetLine(row,column.Key,e.Value?.ToString())"><option value="">اختر...</option>@foreach(var option in Designer.ParseOptions(column.OptionsJson)){<option value="@option">@option</option>}</select>
+                                    }
+                                    else
+                                    {
+                                        <input class="form-control" inputmode="@(column.FieldType is CustomFieldType.Number or CustomFieldType.Money ? "decimal" : "text")" value="@GetLine(row,column.Key)" @oninput="e => SetLine(row,column.Key,e.Value?.ToString())" />
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="custom-total-card"><span>الإجمالي المتوقع</span><strong>@CurrentGrandTotal().ToString("N2") ر.ي</strong></div>
+        </div>
+    }
+
+    <div class="panel premium-panel">
+        <label>ملاحظات المستند</label><textarea class="form-control" @bind="notes"></textarea>
+        <div class="settings-actions"><button class="btn primary" @onclick="SaveRecordAsync">حفظ واعتماد المستند</button><button class="btn" @onclick="ResetEntry">جديد</button></div>
+        @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
+    </div>
+
+    <div class="panel premium-panel">
+        <h2>آخر مستندات هذا النموذج</h2>
+        <div class="builder-table">
+            @foreach (var r in records.Take(15))
+            {
+                <div class="builder-row"><div><strong>@r.DocumentNumber</strong><small>@r.DocumentDate.ToString("yyyy/MM/dd HH:mm") • @r.CreatedByName</small></div><strong>@r.GrandTotal.ToString("N2") ر.ي</strong></div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public long TemplateId { get; set; }
+    private List<CustomDocumentTemplate> templates = [];
+    private CustomDocumentTemplate? template;
+    private List<CustomDocumentField> fields = [];
+    private List<CustomLineColumnDefinition> lineSchema = [];
+    private List<CustomDocumentRecord> records = [];
+    private List<Customer> customers = [];
+    private List<Farm> farms = [];
+    private readonly Dictionary<string, string?> values = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<CustomDocumentLineValue> lines = [];
+    private string? notes;
+    private string? message;
+    private bool ok;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        templates = await Designer.GetTemplatesAsync();
+        var db = await Db.GetAsync();
+        customers = (await db.Table<Customer>().Where(x => !x.IsDeleted && x.IsActive).ToListAsync()).OrderBy(x => x.Name).ToList();
+        farms = (await db.Table<Farm>().Where(x => !x.IsDeleted && x.IsActive).ToListAsync()).OrderBy(x => x.Name).ToList();
+        if (TemplateId <= 0)
+        {
+            template = null; fields = []; lineSchema = []; records = await Designer.GetRecordsAsync(); return;
+        }
+        template = await Designer.GetTemplateAsync(TemplateId);
+        if (template is null) { Navigation.NavigateTo("/custom-documents"); return; }
+        fields = await Designer.GetFieldsAsync(template.Id);
+        lineSchema = Designer.GetLineSchema(template);
+        records = await Designer.GetRecordsAsync(template.Id);
+        ResetEntry();
+    }
+
+    private string? GetHeader(string key) => values.GetValueOrDefault(key);
+    private void SetHeader(string key, string? value) { values[key] = value; StateHasChanged(); }
+    private bool IsChecked(string key) => string.Equals(GetHeader(key), "true", StringComparison.OrdinalIgnoreCase);
+    private decimal CalculatedHeader(CustomDocumentField field)
+    {
+        var result = Designer.EvaluateFormula(field.Formula, values);
+        values[field.Key] = result.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return result;
+    }
+
+    private void AddLine()
+    {
+        var row = new CustomDocumentLineValue();
+        foreach (var c in lineSchema) row.Values[c.Key] = null;
+        lines.Add(row);
+    }
+    private void RemoveLine(CustomDocumentLineValue row) => lines.Remove(row);
+    private string? GetLine(CustomDocumentLineValue row, string key) => row.Values.GetValueOrDefault(key);
+    private void SetLine(CustomDocumentLineValue row, string key, string? value) { row.Values[key] = value; StateHasChanged(); }
+    private decimal CalculatedLine(CustomDocumentLineValue row, CustomLineColumnDefinition column)
+    {
+        var result = Designer.EvaluateFormula(column.Formula, row.Values);
+        row.Values[column.Key] = result.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return result;
+    }
+
+    private decimal CurrentGrandTotal()
+    {
+        if (template is null) return 0m;
+        var lineTotal = 0m;
+        foreach (var row in lines)
+        {
+            var calculated = lineSchema.LastOrDefault(x => x.FieldType == CustomFieldType.Calculated);
+            if (calculated is not null) lineTotal += CalculatedLine(row, calculated);
+        }
+        values["LINES_TOTAL"] = lineTotal.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        foreach (var f in fields.Where(x => x.FieldType == CustomFieldType.Calculated)) CalculatedHeader(f);
+        return string.IsNullOrWhiteSpace(template.GrandTotalFormula) ? lineTotal : Designer.EvaluateFormula(template.GrandTotalFormula, values);
+    }
+
+    private async Task SaveRecordAsync()
+    {
+        try
+        {
+            if (template is null) return;
+            foreach (var f in fields.Where(x => x.FieldType == CustomFieldType.Calculated)) CalculatedHeader(f);
+            foreach (var row in lines) foreach (var c in lineSchema.Where(x => x.FieldType == CustomFieldType.Calculated)) CalculatedLine(row, c);
+            var created = await Designer.CreateRecordAsync(template, values, lines, notes);
+            ok = true; message = $"تم حفظ المستند {created.DocumentNumber} بنجاح.";
+            records = await Designer.GetRecordsAsync(template.Id);
+            ResetEntry(false);
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+    }
+
+    private void ResetEntry(bool clearMessage = true)
+    {
+        values.Clear(); lines.Clear(); notes = null;
+        foreach (var f in fields) if (!string.IsNullOrWhiteSpace(f.DefaultValue)) values[f.Key] = f.DefaultValue;
+        if (template?.AllowLineItems == true) AddLine();
+        if (clearMessage) message = null;
+    }
+}
