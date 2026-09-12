@@ -21,6 +21,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<DebtSmsService>();
         builder.Services.AddSingleton<ZakatNotificationService>();
         builder.Services.AddSingleton<QatFarmService>();
+        builder.Services.AddSingleton<CustomDocumentService>();
         builder.Services.AddSingleton<MobilePdfService>();
         builder.Services.AddSingleton<BackupService>();
         builder.Services.AddSingleton<LocalSyncService>();
