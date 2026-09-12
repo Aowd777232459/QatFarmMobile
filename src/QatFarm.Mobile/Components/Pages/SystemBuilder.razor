@@ -1,0 +1,273 @@
+@page "/system-builder"
+@inject CustomDocumentService Designer
+@inject AppSession Session
+@inject NavigationManager Navigation
+
+<h1>مصمم النظام الداخلي</h1>
+
+@if (!Session.IsAdmin)
+{
+    <div class="alert danger">هذه الصفحة متاحة لمدير النظام فقط.</div>
+}
+else
+{
+    <div class="panel premium-panel">
+        <div class="section-head">
+            <div>
+                <h2>إنشاء نموذج أو فاتورة مخصصة</h2>
+                <p>أنشئ ما تحتاجه من داخل النظام بدون تعديل الكود: حقول، قوائم، أصناف، عمليات حسابية، وإجماليات.</p>
+            </div>
+            <button class="btn primary" @onclick="NewTemplate">＋ نموذج جديد</button>
+        </div>
+        <div class="builder-template-list">
+            @foreach (var item in templates)
+            {
+                <button class="builder-template-card @(current?.Id == item.Id ? "active" : "")" @onclick="() => EditTemplate(item)">
+                    <strong>@item.Name</strong>
+                    <span>@item.Category • @item.NumberPrefix</span>
+                    <small>الإصدار @item.Version</small>
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (current is not null)
+    {
+        <div class="panel premium-panel">
+            <div class="section-head"><div><h2>إعدادات النموذج</h2><p>هذه الإعدادات تتحكم في الشاشة التي سيستخدمها الموظف لإنشاء المستند.</p></div></div>
+            <div class="form-grid builder-grid">
+                <div><label>اسم النموذج</label><input class="form-control" @bind="current.Name" placeholder="مثال: فاتورة مشتريات" /></div>
+                <div><label>التصنيف</label><input class="form-control" @bind="current.Category" placeholder="فاتورة / سند / نموذج" /></div>
+                <div><label>الكود الداخلي</label><input class="form-control" @bind="current.Code" placeholder="PURCHASE" /></div>
+                <div><label>بادئة الرقم</label><input class="form-control" @bind="current.NumberPrefix" placeholder="PUR" /></div>
+                <div class="wide"><label>الوصف</label><textarea class="form-control" @bind="current.Description"></textarea></div>
+                <div class="wide"><label>معادلة الإجمالي النهائي</label><input class="form-control" @bind="current.GrandTotalFormula" placeholder="مثال: [LINES_TOTAL]+[shipping]-[discount]" /><small>استخدم مفاتيح الحقول بين [ ]، والمجموع التلقائي للصفوف هو [LINES_TOTAL].</small></div>
+            </div>
+            <div class="settings-actions">
+                <label class="check"><input type="checkbox" @bind="current.AllowLineItems" /> تفعيل جدول أصناف/بنود متكرر</label>
+                <label class="check"><input type="checkbox" @bind="current.IsActive" /> النموذج نشط</label>
+                <button class="btn primary" @onclick="SaveTemplateAsync">حفظ إعدادات النموذج</button>
+                @if (current.Id > 0)
+                {
+                    <button class="btn" @onclick="OpenDocument">فتح شاشة الإدخال</button>
+                    <button class="btn danger" @onclick="DeleteTemplateAsync">حذف النموذج</button>
+                }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(ok ? "success" : "danger")">@message</div> }
+        </div>
+
+        @if (current.Id > 0)
+        {
+            <div class="panel premium-panel">
+                <div class="section-head"><div><h2>الحقول الأساسية</h2><p>أضف أي معلومة تحتاجها: عميل، مزرعة، مبلغ، تاريخ، قائمة، نص أو نتيجة محسوبة.</p></div></div>
+                <div class="builder-table">
+                    @foreach (var f in fields)
+                    {
+                        <div class="builder-row">
+                            <div><strong>@f.Label</strong><small>@f.Key • @FieldTypeText(f.FieldType) • @f.Section</small></div>
+                            <div class="builder-row-actions"><button class="btn ghost" @onclick="() => EditField(f)">تعديل</button><button class="btn danger" @onclick="() => DeleteFieldAsync(f)">حذف</button></div>
+                        </div>
+                    }
+                </div>
+                <div class="builder-editor-card">
+                    <h3>@(fieldDraft.Id == 0 ? "إضافة حقل" : "تعديل الحقل")</h3>
+                    <div class="form-grid builder-grid">
+                        <div><label>اسم الحقل</label><input class="form-control" @bind="fieldDraft.Label" placeholder="مثال: رسوم النقل" /></div>
+                        <div><label>المفتاح</label><input class="form-control" @bind="fieldDraft.Key" placeholder="shipping" /></div>
+                        <div><label>نوع الحقل</label><select class="form-control" @bind="fieldDraft.FieldType">@foreach(var t in Enum.GetValues<CustomFieldType>()){<option value="@t">@FieldTypeText(t)</option>}</select></div>
+                        <div><label>القسم</label><input class="form-control" @bind="fieldDraft.Section" placeholder="البيانات الأساسية" /></div>
+                        <div><label>الترتيب</label><input class="form-control" type="number" @bind="fieldDraft.SortOrder" /></div>
+                        <div><label>القيمة الافتراضية</label><input class="form-control" @bind="fieldDraft.DefaultValue" /></div>
+                        @if (fieldDraft.FieldType == CustomFieldType.Select)
+                        {
+                            <div class="wide"><label>خيارات القائمة</label><textarea class="form-control" @bind="fieldOptionsText" placeholder="اكتب كل خيار في سطر"></textarea></div>
+                        }
+                        @if (fieldDraft.FieldType == CustomFieldType.Calculated)
+                        {
+                            <div class="wide"><label>المعادلة</label><input class="form-control" @bind="fieldDraft.Formula" placeholder="مثال: [quantity]*[price]-[discount]" /></div>
+                        }
+                    </div>
+                    <div class="settings-actions">
+                        <label class="check"><input type="checkbox" @bind="fieldDraft.IsRequired" /> مطلوب</label>
+                        <label class="check"><input type="checkbox" @bind="fieldDraft.IncludeInPrint" /> يظهر عند الطباعة</label>
+                        <label class="check"><input type="checkbox" @bind="fieldDraft.IsSummary" /> يظهر في الملخص</label>
+                        <button class="btn primary" @onclick="SaveFieldAsync">حفظ الحقل</button>
+                        <button class="btn" @onclick="ResetField">إلغاء</button>
+                    </div>
+                </div>
+            </div>
+
+            @if (current.AllowLineItems)
+            {
+                <div class="panel premium-panel">
+                    <div class="section-head"><div><h2>أعمدة جدول الأصناف والبنود</h2><p>كوّن جدولًا خاصًا بك مثل: الصنف، الكمية، السعر، الخصم، الضريبة، الإجمالي.</p></div></div>
+                    <div class="builder-table">
+                        @foreach (var c in lineColumns.OrderBy(x => x.SortOrder))
+                        {
+                            <div class="builder-row">
+                                <div><strong>@c.Label</strong><small>@c.Key • @FieldTypeText(c.FieldType) @(string.IsNullOrWhiteSpace(c.Formula) ? "" : $"• {c.Formula}")</small></div>
+                                <button class="btn danger" @onclick="() => RemoveLineColumn(c)">حذف</button>
+                            </div>
+                        }
+                    </div>
+                    <div class="builder-editor-card">
+                        <div class="form-grid builder-grid">
+                            <div><label>اسم العمود</label><input class="form-control" @bind="lineDraft.Label" placeholder="الكمية" /></div>
+                            <div><label>المفتاح</label><input class="form-control" @bind="lineDraft.Key" placeholder="quantity" /></div>
+                            <div><label>نوع العمود</label><select class="form-control" @bind="lineDraft.FieldType">@foreach(var t in LineFieldTypes){<option value="@t">@FieldTypeText(t)</option>}</select></div>
+                            <div><label>الترتيب</label><input class="form-control" type="number" @bind="lineDraft.SortOrder" /></div>
+                            @if (lineDraft.FieldType == CustomFieldType.Select)
+                            {
+                                <div class="wide"><label>خيارات العمود</label><textarea class="form-control" @bind="lineOptionsText"></textarea></div>
+                            }
+                            @if (lineDraft.FieldType == CustomFieldType.Calculated)
+                            {
+                                <div class="wide"><label>معادلة العمود</label><input class="form-control" @bind="lineDraft.Formula" placeholder="[quantity]*[price]" /></div>
+                            }
+                        </div>
+                        <div class="settings-actions"><label class="check"><input type="checkbox" @bind="lineDraft.IsRequired" /> مطلوب</label><button class="btn primary" @onclick="AddLineColumnAsync">إضافة العمود</button></div>
+                    </div>
+                </div>
+            }
+        }
+    }
+}
+
+@code {
+    private List<CustomDocumentTemplate> templates = [];
+    private CustomDocumentTemplate? current;
+    private List<CustomDocumentField> fields = [];
+    private List<CustomLineColumnDefinition> lineColumns = [];
+    private CustomDocumentField fieldDraft = NewFieldDraft();
+    private CustomLineColumnDefinition lineDraft = NewLineDraft();
+    private string fieldOptionsText = string.Empty;
+    private string lineOptionsText = string.Empty;
+    private string? message;
+    private bool ok;
+    private static readonly CustomFieldType[] LineFieldTypes = [CustomFieldType.Text, CustomFieldType.Number, CustomFieldType.Money, CustomFieldType.Select, CustomFieldType.Calculated];
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        templates = await Designer.GetTemplatesAsync(true);
+        if (current?.Id > 0)
+        {
+            current = await Designer.GetTemplateAsync(current.Id);
+            if (current is not null) await LoadTemplatePartsAsync();
+        }
+    }
+
+    private void NewTemplate()
+    {
+        current = new CustomDocumentTemplate { Name = "نموذج جديد", Code = "FORM", NumberPrefix = "DOC", Category = "نموذج", AllowLineItems = true, IsActive = true };
+        fields = []; lineColumns = []; ResetField(); ResetLine(); message = null;
+    }
+
+    private async Task EditTemplate(CustomDocumentTemplate item)
+    {
+        current = await Designer.GetTemplateAsync(item.Id);
+        await LoadTemplatePartsAsync();
+        message = null;
+    }
+
+    private async Task LoadTemplatePartsAsync()
+    {
+        if (current is null) return;
+        fields = await Designer.GetFieldsAsync(current.Id);
+        lineColumns = Designer.GetLineSchema(current);
+        ResetField(); ResetLine();
+    }
+
+    private async Task SaveTemplateAsync()
+    {
+        try
+        {
+            if (current is null) return;
+            Designer.SetLineSchema(current, lineColumns);
+            current = await Designer.SaveTemplateAsync(current);
+            ok = true; message = "تم حفظ إعدادات النموذج.";
+            templates = await Designer.GetTemplatesAsync(true);
+            await LoadTemplatePartsAsync();
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+    }
+
+    private async Task DeleteTemplateAsync()
+    {
+        if (current is null) return;
+        await Designer.DeleteTemplateAsync(current);
+        current = null; fields = []; lineColumns = []; templates = await Designer.GetTemplatesAsync(true);
+    }
+
+    private void OpenDocument() { if (current is not null) Navigation.NavigateTo($"/custom-document/{current.Id}"); }
+
+    private void EditField(CustomDocumentField f)
+    {
+        fieldDraft = new CustomDocumentField
+        {
+            Id = f.Id, SyncKey = f.SyncKey, CreatedAt = f.CreatedAt, UpdatedAt = f.UpdatedAt, IsDeleted = f.IsDeleted,
+            TemplateId = f.TemplateId, Key = f.Key, Label = f.Label, FieldType = f.FieldType, Section = f.Section,
+            SortOrder = f.SortOrder, IsRequired = f.IsRequired, IncludeInPrint = f.IncludeInPrint, IsSummary = f.IsSummary,
+            DefaultValue = f.DefaultValue, OptionsJson = f.OptionsJson, Formula = f.Formula, Placeholder = f.Placeholder
+        };
+        fieldOptionsText = string.Join(Environment.NewLine, Designer.ParseOptions(f.OptionsJson));
+    }
+
+    private async Task SaveFieldAsync()
+    {
+        try
+        {
+            if (current is null) return;
+            fieldDraft.TemplateId = current.Id;
+            if (fieldDraft.FieldType == CustomFieldType.Select) fieldDraft.OptionsJson = Designer.SerializeOptions(Designer.ParseOptions(fieldOptionsText));
+            await Designer.SaveFieldAsync(fieldDraft);
+            fields = await Designer.GetFieldsAsync(current.Id);
+            ResetField(); ok = true; message = "تم حفظ الحقل.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+    }
+
+    private async Task DeleteFieldAsync(CustomDocumentField f)
+    {
+        await Designer.DeleteFieldAsync(f);
+        if (current is not null) fields = await Designer.GetFieldsAsync(current.Id);
+    }
+
+    private void ResetField() { fieldDraft = NewFieldDraft(); fieldOptionsText = string.Empty; }
+    private static CustomDocumentField NewFieldDraft() => new() { FieldType = CustomFieldType.Text, Section = "البيانات الأساسية", IncludeInPrint = true };
+
+    private async Task AddLineColumnAsync()
+    {
+        try
+        {
+            if (current is null) return;
+            lineDraft.Label = lineDraft.Label?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(lineDraft.Label)) throw new InvalidOperationException("اسم العمود مطلوب.");
+            lineDraft.Key = CustomDocumentService.NormalizeKey(lineDraft.Key, $"col_{lineColumns.Count + 1}");
+            if (lineDraft.FieldType == CustomFieldType.Select) lineDraft.OptionsJson = Designer.SerializeOptions(Designer.ParseOptions(lineOptionsText));
+            lineColumns.Add(lineDraft);
+            ResetLine();
+            Designer.SetLineSchema(current, lineColumns);
+            current = await Designer.SaveTemplateAsync(current);
+            ok = true; message = "تمت إضافة العمود.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+    }
+
+    private async Task RemoveLineColumn(CustomLineColumnDefinition c)
+    {
+        if (current is null) return;
+        lineColumns.Remove(c); Designer.SetLineSchema(current, lineColumns); current = await Designer.SaveTemplateAsync(current);
+    }
+
+    private void ResetLine() { lineDraft = NewLineDraft(); lineDraft.SortOrder = lineColumns.Count + 1; lineOptionsText = string.Empty; }
+    private static CustomLineColumnDefinition NewLineDraft() => new() { FieldType = CustomFieldType.Text, IncludeInPrint = true };
+
+    private static string FieldTypeText(CustomFieldType type) => type switch
+    {
+        CustomFieldType.Text => "نص", CustomFieldType.Number => "رقم", CustomFieldType.Money => "مبلغ", CustomFieldType.Date => "تاريخ",
+        CustomFieldType.Select => "قائمة", CustomFieldType.Checkbox => "نعم/لا", CustomFieldType.Customer => "عميل", CustomFieldType.Farm => "مزرعة",
+        CustomFieldType.Calculated => "محسوب", CustomFieldType.Notes => "ملاحظات", _ => type.ToString()
+    };
+}
