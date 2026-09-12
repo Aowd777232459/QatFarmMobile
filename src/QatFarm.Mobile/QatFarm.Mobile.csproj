@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
-    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <TargetFrameworks>net10.0-android36.0;net10.0-windows10.0.19041.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>QatFarm.Mobile</RootNamespace>
     <UseMaui>true</UseMaui>
@@ -9,17 +9,28 @@
     <Nullable>enable</Nullable>
     <ApplicationTitle>نظام زراعي عواد سوفت</ApplicationTitle>
     <ApplicationId>com.qatfarm.mobile</ApplicationId>
-    <ApplicationDisplayVersion>2.2.1</ApplicationDisplayVersion>
-    <ApplicationVersion>41</ApplicationVersion>
+    <ApplicationDisplayVersion>2.3.0</ApplicationDisplayVersion>
+    <ApplicationVersion>42</ApplicationVersion>
+    <PublishTrimmed>false</PublishTrimmed>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidUseAapt2>true</AndroidUseAapt2>
-    <PublishTrimmed>false</PublishTrimmed>
     <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
     <RuntimeIdentifiers>android-arm;android-arm64;android-x86;android-x64</RuntimeIdentifiers>
     <UseMonoRuntime>true</UseMonoRuntime>
     <RunAOTCompilation>false</RunAOTCompilation>
-    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,5 +45,6 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
   </ItemGroup>
 </Project>
