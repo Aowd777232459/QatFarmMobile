@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-android:
@@ -34,31 +35,42 @@ jobs:
           $sdkmanager = Join-Path $env:ANDROID_HOME 'cmdline-tools\latest\bin\sdkmanager.bat'
           if (-not (Test-Path $sdkmanager)) { $sdkmanager = (Get-ChildItem (Join-Path $env:ANDROID_HOME 'cmdline-tools') -Recurse -Filter sdkmanager.bat | Select-Object -First 1).FullName }
           & $sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Validate system builder source
+      - name: Validate mobile system builder source
         shell: pwsh
         run: |
-          foreach ($file in @('src/QatFarm.Mobile/Components/Pages/SystemBuilder.razor','src/QatFarm.Mobile/Components/Pages/CustomDocuments.razor','src/QatFarm.Mobile/Services/CustomDocumentService.cs','src/QatFarm.Mobile/Models/CustomDocumentModels.cs')) { if (-not (Test-Path $file)) { throw "Missing $file" } }
-      - name: Generate release signing key
+          foreach ($file in @('src/QatFarm.Mobile/Components/Pages/SystemBuilder.razor','src/QatFarm.Mobile/Components/Pages/CustomDocuments.razor','src/QatFarm.Mobile/Services/CustomDocumentService.cs','src/QatFarm.Mobile/Models/CustomDocumentModels.cs','src/QatFarm.Mobile/Components/Pages/More.razor')) { if (-not (Test-Path $file)) { throw "Missing $file" } }
+          $more = Get-Content 'src/QatFarm.Mobile/Components/Pages/More.razor' -Raw
+          if (-not $more.Contains('/system-builder')) { throw 'Mobile system-builder link is missing.' }
+      - name: Download stable signing material
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          keytool -genkeypair -v -keystore qatfarm-premium.jks -storepass QatFarmPremium230 -keypass QatFarmPremium230 -alias qatfarm -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AWAD SOFT,OU=QatFarm,O=AWAD SOFT,L=Sanaa,C=YE"
+          curl.exe -L --fail-with-body -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9738604683/zip" -o stable-source.zip
+          Expand-Archive stable-source.zip -DestinationPath stable-source -Force
+          $key = Get-ChildItem stable-source -Recurse -Filter QatFarmMobile.keystore | Select-Object -First 1
+          if (-not $key) { throw 'Stable signing key was not found.' }
+          "KEYSTORE=$($key.FullName)" | Out-File $env:GITHUB_ENV -Append
       - name: Restore build and publish APK
         shell: pwsh
+        env:
+          QATFARM_SIGN_PASS: ${{ secrets.QATFARM_SIGN_PASS }}
         run: |
           $project = (Resolve-Path 'src/QatFarm.Mobile/QatFarm.Mobile.csproj').Path
           dotnet restore $project -p:TargetFramework=net10.0-android36.0
           dotnet build $project -f net10.0-android36.0 -c Release --no-restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet publish $project -f net10.0-android36.0 -c Release --no-restore -p:ApplicationDisplayVersion=2.3.0 -p:ApplicationVersion=42 -p:AndroidPackageFormats=apk -p:AndroidCreatePackagePerAbi=false -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$PWD/qatfarm-premium.jks" -p:AndroidSigningKeyAlias=qatfarm -p:AndroidSigningKeyPass=QatFarmPremium230 -p:AndroidSigningStorePass=QatFarmPremium230
+          $signPass = if ([string]::IsNullOrWhiteSpace($env:QATFARM_SIGN_PASS)) { 'QatFarmMobile2026Key' } else { $env:QATFARM_SIGN_PASS }
+          dotnet publish $project -f net10.0-android36.0 -c Release --no-restore -p:ApplicationDisplayVersion=2.3.0 -p:ApplicationVersion=43 -p:AndroidPackageFormats=apk -p:AndroidCreatePackagePerAbi=false -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$env:KEYSTORE" -p:AndroidSigningKeyAlias=qatfarm -p:AndroidSigningKeyPass="$signPass" -p:AndroidSigningStorePass="$signPass"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item release -ItemType Directory -Force | Out-Null
           $apk = Get-ChildItem 'src/QatFarm.Mobile' -Recurse -Filter '*-Signed.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $apk) { $apk = Get-ChildItem 'src/QatFarm.Mobile' -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 }
           if (-not $apk) { throw 'APK not found.' }
-          Copy-Item $apk.FullName 'release/QatFarmMobile-AWAD-SOFT-2.3.0-PREMIUM.apk' -Force
-          (Get-FileHash 'release/QatFarmMobile-AWAD-SOFT-2.3.0-PREMIUM.apk' -Algorithm SHA256).Hash | Set-Content release/SHA256.txt
+          Copy-Item $apk.FullName 'release/QatFarmMobile-AWAD-SOFT-2.3.0-PREMIUM-MOBILE-BUILDER.apk' -Force
+          (Get-FileHash 'release/QatFarmMobile-AWAD-SOFT-2.3.0-PREMIUM-MOBILE-BUILDER.apk' -Algorithm SHA256).Hash | Set-Content release/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: QatFarmMobile-AWAD-SOFT-2.3.0-PREMIUM
+          name: QatFarmMobile-AWAD-SOFT-2.3.0-PREMIUM-MOBILE-BUILDER
           path: release/*
           retention-days: 30
