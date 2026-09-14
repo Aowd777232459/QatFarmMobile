@@ -4,6 +4,7 @@
 <div class="menu-grid">
  <a class="vip-menu-link" href="/accounting"><span>المركز المالي</span></a>
  <a href="/invoices"><span>الفواتير</span></a>
+ <a href="/custom-documents"><span>النماذج المخصصة</span><small>استخدام النماذج التي تم إنشاؤها</small></a>
  <a href="/cultivation"><span>خسائر التربية</span></a>
  <a href="/farms"><span>المزارع</span></a>
  <a href="/creditors"><span>الدائنون</span></a>
@@ -12,12 +13,14 @@
  <a href="/settings"><span>الإعدادات والنسخ</span></a>
  @if(Session.IsAdmin)
  {
+  <a class="vip-menu-link" href="/system-builder"><span>مصمم النظام الداخلي</span><small>إنشاء وتعديل النماذج من الجوال</small></a>
   <a href="/catalogs"><span>القوائم المحاسبية</span></a>
   <a href="/users"><span>المستخدمون</span></a>
   <a href="/audit"><span>سجل التدقيق</span></a>
  }
  else
  {
+  <div class="menu-link locked"><span>مصمم النظام الداخلي</span><small>🔒 للمدير فقط</small></div>
   <div class="menu-link locked"><span>القوائم المحاسبية</span><small>🔒 للمدير فقط</small></div>
   <div class="menu-link locked"><span>المستخدمون</span><small>🔒 للمدير فقط</small></div>
   <div class="menu-link locked"><span>سجل التدقيق</span><small>🔒 للمدير فقط</small></div>
