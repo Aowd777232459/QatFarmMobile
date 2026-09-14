@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AWAD AI Developer</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <div><strong>AWAD AI Developer</strong><small>مساعد تطوير ذاتي آمن</small></div>
+      </div>
+      <div class="side-section">
+        <span class="side-label">المشروع الحالي</span>
+        <div id="workspaceName" class="workspace-name">لم يتم اختيار مشروع</div>
+        <button id="openProjectBtn" class="btn primary wide">فتح مشروع</button>
+        <button id="stageBtn" class="btn ghost wide">إنشاء نسخة تطوير آمنة</button>
+      </div>
+      <div class="side-section">
+        <span class="side-label">الوضع</span>
+        <label class="toggle-row"><input id="approvalRequired" type="checkbox" checked /><span>موافقتي قبل التنفيذ</span></label>
+        <div class="hint">الوضع التلقائي مقيد داخل مجلد المشروع وبأوامر تطوير مسموحة فقط.</div>
+      </div>
+      <div class="side-section grow">
+        <span class="side-label">ملفات المشروع</span>
+        <div id="tree" class="tree"><div class="muted">افتح مشروعًا لعرض الملفات.</div></div>
+      </div>
+      <button id="settingsBtn" class="btn ghost wide">⚙ إعدادات الذكاء الاصطناعي</button>
+      <div class="version">AWAD SOFT · v1.0.0</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><h1>مركز التطوير الذكي</h1><p id="statusText">جاهز لبدء مشروع جديد أو تطوير مشروع موجود.</p></div>
+        <div class="status-pill"><span id="statusDot"></span><b id="modelName">gpt-5.6-sol</b></div>
+      </header>
+      <section class="workspace-grid">
+        <div class="chat-panel panel">
+          <div class="panel-title">
+            <div><h2>الدردشة</h2><p>اطلب ميزة، إصلاح خطأ، إعادة تصميم، اختبار أو تطوير شامل.</p></div>
+            <button id="memoryBtn" class="icon-btn" title="ذاكرة المشروع">ذاكرة</button>
+          </div>
+          <div id="chat" class="chat">
+            <div class="message assistant"><div class="avatar">AI</div><div class="bubble"><strong>مرحبًا، أنا مساعد عواد سوفت للتطوير.</strong><p>افتح مجلد مشروع، ثم اكتب ما تريد. سأقرأ بنية المشروع وأقترح خطة واضحة قبل لمس الملفات.</p></div></div>
+          </div>
+          <div class="composer">
+            <textarea id="prompt" rows="4" placeholder="مثال: افحص المشروع، أصلح أخطاء البناء، ثم حسّن شاشة تسجيل الدخول مع الحفاظ على المنطق الحالي..."></textarea>
+            <div class="composer-actions">
+              <button id="planBtn" class="btn primary">إنشاء خطة</button>
+              <button id="autoBtn" class="btn accent">تطوير تلقائي</button>
+              <select id="cycles" title="عدد دورات الإصلاح"><option value="2">دورتان</option><option value="3" selected>3 دورات</option><option value="4">4 دورات</option><option value="5">5 دورات</option></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="work-panel panel">
+          <div class="panel-title"><div><h2>الخطة والتنفيذ</h2><p>كل تعديل يظهر هنا قبل التنفيذ في الوضع الآمن.</p></div><span id="planStatus" class="mini-badge">لا توجد خطة</span></div>
+          <div id="planArea" class="plan-area empty-state"><div class="empty-icon">⌘</div><strong>لم يتم إنشاء خطة بعد</strong><span>اكتب طلبك ثم اضغط «إنشاء خطة».</span></div>
+          <div id="applyBar" class="apply-bar hidden"><button id="applyBtn" class="btn primary">اعتماد وتنفيذ الخطة</button><button id="discardBtn" class="btn ghost">إلغاء</button></div>
+          <div class="log-title"><span>سجل التنفيذ</span><button id="clearLogBtn">مسح</button></div>
+          <pre id="log" class="log">لا توجد عمليات بعد.</pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="pathModal" class="modal hidden"><div class="modal-card">
+    <div class="modal-head"><h3>فتح مشروع</h3><button data-close="pathModal">×</button></div>
+    <p>أدخل مسار مجلد المشروع على الكمبيوتر. لا يتم إرسال الملفات كاملة؛ يُرسل فقط السياق النصي اللازم للمهمة.</p>
+    <label>مسار المشروع</label><input id="projectPath" class="input" placeholder="C:\Projects\MyApp" />
+    <div class="modal-actions"><button id="confirmOpenBtn" class="btn primary">فتح وتحليل</button><button class="btn ghost" data-close="pathModal">إلغاء</button></div>
+  </div></div>
+
+  <div id="settingsModal" class="modal hidden"><div class="modal-card">
+    <div class="modal-head"><h3>إعدادات الذكاء الاصطناعي</h3><button data-close="settingsModal">×</button></div>
+    <label>مفتاح API</label><input id="apiKey" class="input ltr" type="password" placeholder="يُحفظ في الذاكرة أثناء تشغيل التطبيق فقط" />
+    <label>النموذج</label><input id="model" class="input ltr" value="gpt-5.6-sol" />
+    <label>Base URL</label><input id="baseUrl" class="input ltr" value="https://api.openai.com/v1" />
+    <div class="security-note">لا يكتب التطبيق مفتاح API في ملفات المشروع، ويمكن بدلًا من ذلك استخدام المتغير OPENAI_API_KEY.</div>
+    <div class="modal-actions"><button id="saveSettingsBtn" class="btn primary">حفظ</button><button class="btn ghost" data-close="settingsModal">إلغاء</button></div>
+  </div></div>
+
+  <div id="memoryModal" class="modal hidden"><div class="modal-card wide-modal">
+    <div class="modal-head"><h3>ذاكرة المشروع</h3><button data-close="memoryModal">×</button></div><div id="memoryList" class="memory-list">لا توجد ذاكرة بعد.</div>
+  </div></div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
