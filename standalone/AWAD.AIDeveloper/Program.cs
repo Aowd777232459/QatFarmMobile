@@ -88,7 +88,10 @@ app.MapPost("/api/auto", async (AutoRequest req, AgentService agent, Cancellatio
 });
 
 app.MapGet("/api/memory", (AppState state, MemoryStore memory) =>
-    string.IsNullOrWhiteSpace(state.WorkspacePath) ? Results.Ok(Array.Empty<MemoryEntry>()) : Results.Ok(memory.Load(state.WorkspacePath).TakeLast(30)));
+{
+    if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.Ok(Array.Empty<MemoryEntry>());
+    return Results.Ok(memory.Load(state.WorkspacePath).TakeLast(30));
+});
 
 app.MapFallbackToFile("index.html");
 app.Lifetime.ApplicationStarted.Register(() =>
