@@ -6,6 +6,7 @@ builder.WebHost.UseUrls("http://127.0.0.1:45873");
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddSingleton<WorkspaceService>();
+builder.Services.AddSingleton<DeveloperToolsService>();
 builder.Services.AddSingleton<MemoryStore>();
 builder.Services.AddSingleton<OpenAiResponsesClient>();
 builder.Services.AddSingleton<AgentService>();
@@ -17,7 +18,7 @@ app.UseStaticFiles();
 app.MapGet("/api/status", (AppState state) => Results.Ok(new
 {
     app = "AWAD AI Developer",
-    version = "1.0.0",
+    version = "1.1.0",
     workspace = state.WorkspacePath,
     model = state.Model,
     hasApiKey = !string.IsNullOrWhiteSpace(state.ApiKey),
@@ -74,6 +75,21 @@ app.MapPost("/api/chat", async (ChatRequest req, AppState state, AgentService ag
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
+app.MapPost("/api/review", async (PlanRequest req, AppState state, AgentService agent, CancellationToken ct) =>
+{
+    if (!state.Plans.TryGetValue(req.PlanId, out var plan)) return Results.BadRequest(new { error = "الخطة غير موجودة أو انتهت." });
+    try { return Results.Ok(await agent.ReviewAsync(plan, ct)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/preview", (PlanRequest req, AppState state, DeveloperToolsService tools) =>
+{
+    if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.BadRequest(new { error = "اختر المشروع أولاً." });
+    if (!state.Plans.TryGetValue(req.PlanId, out var plan)) return Results.BadRequest(new { error = "الخطة غير موجودة أو انتهت." });
+    try { return Results.Ok(tools.PreviewPlan(state.WorkspacePath, plan)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
 app.MapPost("/api/apply", async (ApplyRequest req, AppState state, AgentService agent, CancellationToken ct) =>
 {
     if (!state.Plans.TryGetValue(req.PlanId, out var plan)) return Results.BadRequest(new { error = "الخطة غير موجودة أو انتهت." });
@@ -87,10 +103,45 @@ app.MapPost("/api/auto", async (AutoRequest req, AgentService agent, Cancellatio
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
+app.MapPost("/api/file/read", (FileRequest req, AppState state, DeveloperToolsService tools) =>
+{
+    if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.BadRequest(new { error = "اختر المشروع أولاً." });
+    try { return Results.Ok(tools.ReadFile(state.WorkspacePath, req.Path)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/file/save", (FileSaveRequest req, AppState state, DeveloperToolsService tools) =>
+{
+    if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.BadRequest(new { error = "اختر المشروع أولاً." });
+    try { return Results.Ok(tools.SaveFile(state.WorkspacePath, req.Path, req.Content)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/terminal", async (TerminalRequest req, AppState state, DeveloperToolsService tools, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.BadRequest(new { error = "اختر المشروع أولاً." });
+    try { return Results.Ok(await tools.RunTerminalAsync(state.WorkspacePath, req.Command, ct)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/git", async (AppState state, DeveloperToolsService tools, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.BadRequest(new { error = "اختر المشروع أولاً." });
+    try { return Results.Ok(await tools.GetGitSnapshotAsync(state.WorkspacePath, ct)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/git/checkpoint", async (GitCommitRequest req, AppState state, DeveloperToolsService tools, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.BadRequest(new { error = "اختر المشروع أولاً." });
+    try { return Results.Ok(await tools.CreateGitCheckpointAsync(state.WorkspacePath, req.Message, ct)); }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
 app.MapGet("/api/memory", (AppState state, MemoryStore memory) =>
 {
     if (string.IsNullOrWhiteSpace(state.WorkspacePath)) return Results.Ok(Array.Empty<MemoryEntry>());
-    return Results.Ok(memory.Load(state.WorkspacePath).TakeLast(30));
+    return Results.Ok(memory.Load(state.WorkspacePath).TakeLast(30).ToArray());
 });
 
 app.MapFallbackToFile("index.html");
