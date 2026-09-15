@@ -47,6 +47,30 @@ PROJECT CONTEXT:
         return plan;
     }
 
+    public async Task<PlanReview> ReviewAsync(AgentPlan plan, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_state.WorkspacePath)) throw new InvalidOperationException("اختر المشروع أولاً.");
+        var context = _workspace.BuildProjectContext(_state.WorkspacePath, plan.OriginalTask ?? plan.Summary, 60_000);
+        var planJson = JsonSerializer.Serialize(plan, JsonOptions);
+        var raw = await _ai.GenerateAsync(ReviewerInstructions, $"""
+ORIGINAL TASK:
+{plan.OriginalTask}
+
+PROPOSED PLAN:
+{planJson}
+
+PROJECT CONTEXT:
+{context}
+""", ct);
+        var review = ParseReview(raw);
+        review.Score = Math.Clamp(review.Score, 0, 100);
+        review.Risks ??= [];
+        review.Suggestions ??= [];
+        if (string.IsNullOrWhiteSpace(review.Summary)) review.Summary = review.Approved ? "الخطة مناسبة للتنفيذ." : "الخطة تحتاج مراجعة قبل التنفيذ.";
+        _memory.Append(_state.WorkspacePath, new MemoryEntry(DateTimeOffset.Now, "AI plan review", $"Score {review.Score}: {review.Summary}"));
+        return review;
+    }
+
     public async Task<ApplyResult> ApplyAsync(AgentPlan plan, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_state.WorkspacePath)) throw new InvalidOperationException("اختر المشروع أولاً.");
@@ -87,6 +111,20 @@ LOGS:
 
     private static AgentPlan ParsePlan(string raw)
     {
+        var text = ExtractJson(raw);
+        try { return JsonSerializer.Deserialize<AgentPlan>(text, JsonOptions) ?? throw new InvalidOperationException("الخطة فارغة."); }
+        catch (Exception ex) { throw new InvalidOperationException("تعذر قراءة خطة الذكاء الاصطناعي كـ JSON صحيح. " + ex.Message); }
+    }
+
+    private static PlanReview ParseReview(string raw)
+    {
+        var text = ExtractJson(raw);
+        try { return JsonSerializer.Deserialize<PlanReview>(text, JsonOptions) ?? throw new InvalidOperationException("المراجعة فارغة."); }
+        catch (Exception ex) { throw new InvalidOperationException("تعذر قراءة مراجعة الذكاء الاصطناعي كـ JSON صحيح. " + ex.Message); }
+    }
+
+    private static string ExtractJson(string raw)
+    {
         var text = raw.Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
         {
@@ -98,8 +136,7 @@ LOGS:
         var start = text.IndexOf('{');
         var end = text.LastIndexOf('}');
         if (start >= 0 && end > start) text = text[start..(end + 1)];
-        try { return JsonSerializer.Deserialize<AgentPlan>(text, JsonOptions) ?? throw new InvalidOperationException("الخطة فارغة."); }
-        catch (Exception ex) { throw new InvalidOperationException("تعذر قراءة خطة الذكاء الاصطناعي كـ JSON صحيح. " + ex.Message); }
+        return text;
     }
 
     private static void ValidatePlan(AgentPlan plan)
@@ -144,6 +181,20 @@ JSON SCHEMA:
     {"type":"note","content":"human note only when needed","reason":"why"}
   ],
   "next": "short Arabic next step"
+}
+""";
+
+    private const string ReviewerInstructions = """
+You are the independent reviewer inside AWAD AI Developer. Review a proposed software modification plan before execution.
+Return ONLY valid JSON. Do not propose direct file contents. Check correctness, scope, regressions, security, data loss, build/test coverage, and whether actions match the original task.
+Approve only when the plan is reasonably safe and complete. A plan may still receive suggestions while approved.
+JSON SCHEMA:
+{
+  "approved": true,
+  "score": 0,
+  "summary": "Arabic summary",
+  "risks": ["Arabic risk"],
+  "suggestions": ["Arabic suggestion"]
 }
 """;
 }
