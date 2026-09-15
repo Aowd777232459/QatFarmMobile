@@ -20,16 +20,23 @@
         <button id="stageBtn" class="btn ghost wide">إنشاء نسخة تطوير آمنة</button>
       </div>
       <div class="side-section">
+        <span class="side-label">أدوات المطور</span>
+        <div class="tool-grid">
+          <button id="terminalBtn" class="btn ghost">⌨ Terminal</button>
+          <button id="gitBtn" class="btn ghost">⑂ Git</button>
+        </div>
+      </div>
+      <div class="side-section">
         <span class="side-label">الوضع</span>
         <label class="toggle-row"><input id="approvalRequired" type="checkbox" checked /><span>موافقتي قبل التنفيذ</span></label>
         <div class="hint">الوضع التلقائي مقيد داخل مجلد المشروع وبأوامر تطوير مسموحة فقط.</div>
       </div>
       <div class="side-section grow">
-        <span class="side-label">ملفات المشروع</span>
+        <span class="side-label">ملفات المشروع · اضغط لفتح الملف</span>
         <div id="tree" class="tree"><div class="muted">افتح مشروعًا لعرض الملفات.</div></div>
       </div>
       <button id="settingsBtn" class="btn ghost wide">⚙ إعدادات الذكاء الاصطناعي</button>
-      <div class="version">AWAD SOFT · v1.0.0</div>
+      <div class="version">AWAD SOFT · v1.1.0</div>
     </aside>
 
     <main class="main">
@@ -44,7 +51,7 @@
             <button id="memoryBtn" class="icon-btn" title="ذاكرة المشروع">ذاكرة</button>
           </div>
           <div id="chat" class="chat">
-            <div class="message assistant"><div class="avatar">AI</div><div class="bubble"><strong>مرحبًا، أنا مساعد عواد سوفت للتطوير.</strong><p>افتح مجلد مشروع، ثم اكتب ما تريد. سأقرأ بنية المشروع وأقترح خطة واضحة قبل لمس الملفات.</p></div></div>
+            <div class="message assistant"><div class="avatar">AI</div><div class="bubble"><strong>مرحبًا، أنا مساعد عواد سوفت للتطوير.</strong><p>افتح مجلد مشروع، ثم اكتب ما تريد. سأقرأ المشروع وأقترح خطة، ويمكنك معاينة الفرق وطلب مراجعة مستقلة قبل التنفيذ.</p></div></div>
           </div>
           <div class="composer">
             <textarea id="prompt" rows="4" placeholder="مثال: افحص المشروع، أصلح أخطاء البناء، ثم حسّن شاشة تسجيل الدخول مع الحفاظ على المنطق الحالي..."></textarea>
@@ -57,9 +64,15 @@
         </div>
 
         <div class="work-panel panel">
-          <div class="panel-title"><div><h2>الخطة والتنفيذ</h2><p>كل تعديل يظهر هنا قبل التنفيذ في الوضع الآمن.</p></div><span id="planStatus" class="mini-badge">لا توجد خطة</span></div>
+          <div class="panel-title"><div><h2>الخطة والتنفيذ</h2><p>كل تعديل يمكن معاينته ومراجعته قبل التنفيذ.</p></div><span id="planStatus" class="mini-badge">لا توجد خطة</span></div>
+          <div id="reviewBanner" class="review-banner hidden"></div>
           <div id="planArea" class="plan-area empty-state"><div class="empty-icon">⌘</div><strong>لم يتم إنشاء خطة بعد</strong><span>اكتب طلبك ثم اضغط «إنشاء خطة».</span></div>
-          <div id="applyBar" class="apply-bar hidden"><button id="applyBtn" class="btn primary">اعتماد وتنفيذ الخطة</button><button id="discardBtn" class="btn ghost">إلغاء</button></div>
+          <div id="applyBar" class="apply-bar hidden">
+            <button id="applyBtn" class="btn primary">اعتماد وتنفيذ</button>
+            <button id="previewBtn" class="btn soft">معاينة الفرق</button>
+            <button id="reviewBtn" class="btn soft">مراجعة AI</button>
+            <button id="discardBtn" class="btn ghost">إلغاء</button>
+          </div>
           <div class="log-title"><span>سجل التنفيذ</span><button id="clearLogBtn">مسح</button></div>
           <pre id="log" class="log">لا توجد عمليات بعد.</pre>
         </div>
@@ -85,6 +98,38 @@
 
   <div id="memoryModal" class="modal hidden"><div class="modal-card wide-modal">
     <div class="modal-head"><h3>ذاكرة المشروع</h3><button data-close="memoryModal">×</button></div><div id="memoryList" class="memory-list">لا توجد ذاكرة بعد.</div>
+  </div></div>
+
+  <div id="editorModal" class="modal hidden"><div class="modal-card editor-modal">
+    <div class="modal-head"><h3>محرر الملفات</h3><button data-close="editorModal">×</button></div>
+    <div id="editorPath" class="editor-path ltr">—</div>
+    <textarea id="editorContent" class="code-editor" spellcheck="false"></textarea>
+    <div class="security-note">الحفظ اليدوي ينشئ نسخة احتياطية قبل الكتابة، ويمنع ملفات الأسرار وملفات .git.</div>
+    <div class="modal-actions"><button id="saveFileBtn" class="btn primary">حفظ الملف</button><button class="btn ghost" data-close="editorModal">إغلاق</button></div>
+  </div></div>
+
+  <div id="terminalModal" class="modal hidden"><div class="modal-card wide-modal">
+    <div class="modal-head"><h3>Terminal آمن</h3><button data-close="terminalModal">×</button></div>
+    <p>الأوامر تعمل داخل مجلد المشروع فقط. مسموح بأدوات التطوير المعروفة، ولا يسمح بربط أوامر shell.</p>
+    <div class="terminal-input-row"><input id="terminalCommand" class="input ltr" placeholder="dotnet build" /><button id="runTerminalBtn" class="btn primary">تشغيل</button></div>
+    <pre id="terminalOutput" class="terminal-output">لا توجد أوامر بعد.</pre>
+  </div></div>
+
+  <div id="gitModal" class="modal hidden"><div class="modal-card wide-modal">
+    <div class="modal-head"><h3>حالة Git</h3><button data-close="gitModal">×</button></div>
+    <div id="gitBranch" class="git-branch">—</div>
+    <div class="git-grid">
+      <div><strong>Status</strong><pre id="gitStatus" class="mini-terminal">—</pre></div>
+      <div><strong>Diff Stat</strong><pre id="gitDiff" class="mini-terminal">—</pre></div>
+    </div>
+    <div><strong>آخر commits</strong><pre id="gitLog" class="mini-terminal">—</pre></div>
+    <label>رسالة checkpoint</label><input id="gitMessage" class="input" placeholder="AWAD AI checkpoint" />
+    <div class="modal-actions"><button id="gitCheckpointBtn" class="btn primary">إنشاء Git Checkpoint</button><button id="refreshGitBtn" class="btn soft">تحديث</button></div>
+  </div></div>
+
+  <div id="previewModal" class="modal hidden"><div class="modal-card preview-modal">
+    <div class="modal-head"><h3>معاينة التغييرات قبل التنفيذ</h3><button data-close="previewModal">×</button></div>
+    <div id="previewList" class="preview-list">لا توجد معاينة.</div>
   </div></div>
 
   <div id="toast" class="toast hidden"></div>
