@@ -1,4 +1,4 @@
-name: AWAD AI Developer Windows 1.0
+name: AWAD AI Developer Windows 1.1
 
 on:
   workflow_dispatch:
@@ -38,16 +38,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Get-ChildItem release/app -Filter 'AWAD-AI-Developer.exe' | Select-Object -First 1
           if (-not $exe) { throw 'AWAD-AI-Developer.exe not found.' }
-          Copy-Item $exe.FullName 'release/AWAD-AI-Developer-1.0.0-Windows-x64.exe' -Force
+          Copy-Item $exe.FullName 'release/AWAD-AI-Developer-1.1.0-Windows-x64.exe' -Force
           Copy-Item 'standalone/AWAD.AIDeveloper/README_AR.md' 'release/README_AR.md' -Force
-          (Get-FileHash 'release/AWAD-AI-Developer-1.0.0-Windows-x64.exe' -Algorithm SHA256).Hash | Set-Content 'release/SHA256.txt'
-          Compress-Archive -Path 'release/AWAD-AI-Developer-1.0.0-Windows-x64.exe','release/README_AR.md','release/SHA256.txt' -DestinationPath 'release/AWAD-AI-Developer-1.0.0-Windows-x64.zip' -Force
+          (Get-FileHash 'release/AWAD-AI-Developer-1.1.0-Windows-x64.exe' -Algorithm SHA256).Hash | Set-Content 'release/SHA256.txt'
+          Compress-Archive -Path 'release/AWAD-AI-Developer-1.1.0-Windows-x64.exe','release/README_AR.md','release/SHA256.txt' -DestinationPath 'release/AWAD-AI-Developer-1.1.0-Windows-x64.zip' -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: AWAD-AI-Developer-1.0.0-Windows-x64
+          name: AWAD-AI-Developer-1.1.0-Windows-x64
           path: |
-            release/AWAD-AI-Developer-1.0.0-Windows-x64.exe
-            release/AWAD-AI-Developer-1.0.0-Windows-x64.zip
+            release/AWAD-AI-Developer-1.1.0-Windows-x64.exe
+            release/AWAD-AI-Developer-1.1.0-Windows-x64.zip
             release/README_AR.md
             release/SHA256.txt
           retention-days: 30
