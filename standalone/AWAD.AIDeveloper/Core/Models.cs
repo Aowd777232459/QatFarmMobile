@@ -45,6 +45,15 @@ public sealed class AgentAction
     public string? Reason { get; set; }
 }
 
+public sealed class PlanReview
+{
+    public bool Approved { get; set; }
+    public int Score { get; set; }
+    public string Summary { get; set; } = string.Empty;
+    public List<string> Risks { get; set; } = [];
+    public List<string> Suggestions { get; set; } = [];
+}
+
 public sealed record ActionLog(string Type, string Target, bool Success, string Message);
 public sealed record CommandResult(int ExitCode, string Output);
 public sealed record ApplyResult(bool Success, string Checkpoint, IReadOnlyList<ActionLog> Logs, string Status, string Summary)
@@ -59,3 +68,12 @@ public sealed record OpenProjectRequest(string Path);
 public sealed record ChatRequest(string Message);
 public sealed record ApplyRequest(string PlanId);
 public sealed record AutoRequest(string Message, int MaxCycles = 3);
+public sealed record PlanRequest(string PlanId);
+public sealed record FileRequest(string Path);
+public sealed record FileSaveRequest(string Path, string? Content);
+public sealed record TerminalRequest(string Command);
+public sealed record GitCommitRequest(string? Message);
+public sealed record FileDocument(string Path, string Content, long Size, DateTime ModifiedUtc);
+public sealed record FileSaveResult(bool Success, string Checkpoint, string Path);
+public sealed record PlanPreviewItem(string Path, string Operation, string Diff);
+public sealed record GitSnapshot(bool IsRepository, string Status, string DiffStat, string RecentCommits, string Branch);
